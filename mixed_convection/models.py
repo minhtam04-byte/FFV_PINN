@@ -81,13 +81,13 @@ class MixedConvectionPorous(BaseHeatPorousScalePINN):
 
         return f_u_base, f_v_base, f_e, f_T_base
     
-    # 3. SỬA LẠI HÀM LOSSES CHO CHUẨN JAXPI
     def losses(self, params, state, batch):
         loss_dict = {}
         
         if 'eqn' in batch:
             pde_losses = self.compute_residual_losses(params, state, batch['eqn'])
             loss_dict.update(pde_losses)
+        predict_fn = jax.vmap(self.u_net, in_axes=(None, 0, 0))
 
         # B. Boundary Conditions Loss
         for side in ['bc_y0', 'bc_yH']:
@@ -95,9 +95,7 @@ class MixedConvectionPorous(BaseHeatPorousScalePINN):
                 coords = batch[side] # shape: (batch_size, 2)
                 bx, by = coords[:, 0], coords[:, 1]
         
-                preds = jnp.stack(self.sol_pred_fn(params, bx, by))
-                u_pred, v_pred, p_pred, T_pred = preds[0], preds[1], preds[2], preds[3]
-                
+                u_pred, v_pred, p_pred, T_pred = predict_fn(params, bx, by)
                 u_true, v_true, T_true = self.analytical_solution(by)
                 
                 # Tính Mean Squared Error
