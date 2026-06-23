@@ -8,10 +8,18 @@ def visualize_samples(samplers):
     batch_int1 = np.array(next(samplers["bc_y0"]))
     batch_int2 = np.array(next(samplers["bc_yH"]))
 
+    batch_bc_x0 = np.array(next(samplers["bc_x0"])) 
+    batch_bc_xL = np.array(next(samplers["bc_xL"]))
+
     plt.figure(figsize=(10, 8))
+
     plt.scatter(batch_f1[:, 0], batch_f1[:, 1], c='blue', s=5, alpha=0.5, label='PDE Domain')
+
     plt.scatter(batch_int1[:, 0], batch_int1[:, 1], c='cyan', marker='x', s=20, label='Bottom BC (y=0)')
     plt.scatter(batch_int2[:, 0], batch_int2[:, 1], c='magenta', marker='x', s=20, label='Top BC (y=H)')
+
+    plt.scatter(batch_bc_x0[:, 0], batch_bc_x0[:, 1], c='green', marker='o', s=10, label='Inlet BC (x=0)')
+    plt.scatter(batch_bc_xL[:, 0], batch_bc_xL[:, 1], c='red', marker='o', s=10, label='Outlet BC (x=L)')
     
     plt.title("Phân bố điểm lấy mẫu")
     plt.legend()
