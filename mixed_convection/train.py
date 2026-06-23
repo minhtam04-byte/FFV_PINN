@@ -83,7 +83,7 @@ def train_model(config, lb, ub, samplers):
                     if hasattr(model.state, 'pts_weights') and model.state.pts_weights is not None:
                         pts_str = " | " + " | ".join([f"tau_{k}: {np.asarray(v).item():.4e}" for k, v in model.state.pts_weights.items()])
 
-                    print(f"Step {step:05d} | Loss: {val_loss:.4e} | {details_str}| {details_str}{pts_str} | Time/Log: {elapsed:.2f}s")
+                    print(f"Step {step:05d} | Loss: {val_loss:.4e} | {details_str}{pts_str} | Time/Log: {elapsed:.2f}s")
                     
                     start_time = time.time() 
 
