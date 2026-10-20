@@ -14,15 +14,16 @@ Các việc nghiên cứu còn mở cho bài báo. Đánh dấu `[x]` khi xong, 
 
 - [ ] `notebooks/fluid_porous_layer.ipynb` cell 3: `titles` lệch với `model_benchmark`; `history_benchmark` đảo vị trí 4–5;
       model case 1 (`..._case_1_pts_fix_grid_42_grid60_60`) bị vẽ chung với case 2; mọi ψ_max đều in nhãn "Case 1 Reference".
-- [ ] **Matmul precision là side effect khi import.** `cases/fluid_porous_layer/train.py` đặt
-      `jax_default_matmul_precision="highest"` ngay khi được import; `cases/porous_cavity/train.py` thì không, nên case này train
-      bằng TF32 trên GPU Ampere. Cùng checkpoint `diff_continuous_ffv_case_2_pts_50_grid80_80_8`: ψ_max = 24.49 (highest)
-      so với 24.78 (mặc định) — lệch 1.2% chỉ vì precision lúc đánh giá. Cần đặt precision tường minh ở mọi entry point
-      (scripts, notebooks) và ghi vào config.
-- [ ] Hai trainer 2D (`cases/*/train.py`) khác nhau 3 điểm: dòng đặt precision nói trên, hook R3 sampler, và nhãn log
-      `tau_` vs `weight_`. Gộp thành một trainer sau khi quyết định hành vi chung.
-- [ ] Gom `evaluate_fields` / `compute_stream_function_and_psimax` (hiện định nghĩa 2 lần trong notebook, lưới 80 và 120)
-      vào `porous_pinn/postprocess.py`: đánh giá trên lưới ≥ 401², báo cáo |ψ(y=1)| làm chỉ số bảo toàn khối lượng.
+- [x] 2026-10-20: **Matmul precision** từng là side effect khi import trainer (`fluid_porous_layer` đặt "highest",
+      `porous_cavity` train bằng TF32; cùng một checkpoint cho ψ_max 24.49 so với 24.78). Giờ ghi trong
+      `config.jax_matmul_precision` và áp dụng bởi `cases.experiment.apply_runtime` (cả khi train lẫn khi nạp lại).
+- [x] 2026-10-20: Hai trainer riêng được thay bằng `jaxpi.training.train` qua `cases.experiment.train_case`
+      (resume, evaluator, dừng khi gặp NaN). Đã kiểm chứng: tham số sau các bước train giống từng bit với trainer cũ.
+- [ ] Notebooks vẫn tự tính ψ_max (`compute_stream_function_and_psimax`, định nghĩa 2 lần, lưới 80 và 120). Thay bằng
+      `porous_pinn.evaluators.convection_fields(model, params, n)` (ψ_max, mass imbalance, Nu nóng/lạnh) trên lưới ≥ 401².
+- [ ] **Hai config vật liệu khác nhau ở 7 siêu tham số** (Fourier scale, n_x, scheme mặc định, trọng số `T_neumann_bc`,
+      `shrink.end_log_drop`), xem `cases/fluid_porous_layer/config/glass.py`. Quyết định khác biệt nào là cố ý trước khi
+      so sánh glass với aluminum trong bài báo.
 - [ ] README: phương trình động lượng ghi `sqrt(Pr/Ra)(1/ε)∇²u` nhưng code dùng `sqrt(Pr/Ra)∇²u` (khớp Gao et al. với J = 1);
       README ghi "warmup cosine decay" nhưng các config dùng `exponential_decay`. Xác định bên nào đúng.
 - [ ] `notebooks/legacy/porous_cavity_train_old.ipynb` dùng scheme `nd`/`can` đã bị xóa khỏi `numerical_pde.py`, nên không chạy được.
@@ -49,6 +50,8 @@ Các việc nghiên cứu còn mở cho bài báo. Đánh dấu `[x]` khi xong, 
       (`compute_ffv_pde_residuals` giả định mặt phân cách nằm giữa P và E).
 - [ ] `sol_net` dùng trọng số [0.5, 0.125×4] → φ_P + h²/32·∇²φ; trung bình ô đúng là [1/3, 1/6×4] (φ_P + h²/24·∇²φ).
 - [ ] Ablation PTS: tắt / τ = a_P cố định (≈ RC loss của FFV-PINN) / BB thích ứng.
+- [ ] Docstring của `can_ffv` nói nội suy Hermite O(h⁴), nhưng `tests/test_fv_schemes.py` đo được bậc 2.00 cho toàn sơ đồ
+      (div từ giá trị tại mặt chỉ đạt bậc 2). Sửa docstring, hoặc bỏ `can_ffv` nếu không đem lại lợi ích.
 
 ## C. Kiểm chứng cho bài báo
 

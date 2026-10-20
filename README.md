@@ -22,28 +22,28 @@ This project models steady 2D natural convection in porous media using a mesh-fr
 ## 2. Directory Structure
 
 ```text
-├── jaxpi/                  # PINN framework adapted from jaxpi2 (Wang et al., 2026)
-├── porous_pinn/            # Shared code for the 2D porous-convection cases
+├── jaxpi/                  # PINN framework (jaxpi2, Wang et al. 2026): models, trainer, samplers
+├── docs/                   # jaxpi2 author's guides (guide/, methods/, api/)
+├── porous_pinn/            # Physics library for the 2D porous-convection cases
 │   ├── numerical_pde.py    # Porous coefficients + FV residual schemes (ffv, ffv_continuous, can_ffv)
 │   ├── models.py           # PorousNaturalConvection2D (subclass of ForwardBVP)
-│   ├── boundary.py         # Wall boundary-point sampling
 │   ├── batching.py         # create_batches: collocation points per diff scheme
-│   ├── experiment.py       # run_ablation_experiment, load_saved_model, case_outputs_dir
-│   ├── samplers.py         # R3CollocationSampler
-│   ├── vrba.py             # vRBA weights
+│   ├── evaluators.py       # Metrics logged during training (psi_max, Nu, conservation errors)
+│   ├── boundary.py         # Wall boundary-point sampling
 │   └── plotting.py         # Plotting and Nusselt helpers
-├── cases/                  # One sub-package per benchmark (trainer + configs)
+├── cases/
+│   ├── experiment.py       # Case registry, train_case / run_experiment / load_run
 │   ├── conduction_1d/      # Gao et al. 2017, Sec. 4.1 (analytical solution)
-│   ├── porous_cavity/      # Homogeneous porous cavity (Gao et al. 2017, Table 1)
-│   └── fluid_porous_layer/ # Gao et al. 2017, Sec. 4.3 (glass / aluminum beads)
+│   ├── porous_cavity/      # Porous cavity; default config ~ de Vahl Davis Ra = 1e4
+│   └── fluid_porous_layer/ # Gao et al. 2017, Sec. 4.3; config/{base,aluminum,glass}.py
 ├── scripts/
-│   ├── train.py            # CLI training entry point (config overrides, run_info.json)
-│   ├── plot_log_history.py # Plot loss / tau from a pasted training log
-│   └── pack_project.py     # Concatenate sources into core_codebase.txt
-├── notebooks/              # Experiments and analysis per case (legacy/ = old, not runnable)
-├── outputs/<case>/         # Checkpoints, history.pkl, figures (git-ignored)
+│   ├── train.py            # CLI training entry point
+│   └── pack_project.py     # Concatenate sources into core_codebase.txt (run from repo root)
+├── tests/                  # pytest: FV-scheme verification, config contracts, golden regression
+├── notebooks/              # Experiments and analysis per case
+├── outputs/<case>/         # Runs: ckpt/, history.pkl, run_info.json (git-ignored)
 ├── references/             # Reference papers (git-ignored)
-└── legacy/                 # Old code kept for reference (not runnable)
+└── legacy/                 # Retired code kept for reference (not runnable)
 ```
 
 ## 3. Usage
@@ -51,15 +51,29 @@ This project models steady 2D natural convection in porous media using a mesh-fr
 ```bash
 source venv/bin/activate.fish
 
-# Train one run; results go to outputs/<case>/<wandb.name>_<exp_name>/
+# Train one run -> outputs/<case>/<wandb.name>_<exp_name>/
 python scripts/train.py \
-    --config=cases/fluid_porous_layer/config/base_line_case_2.py \
-    --exp_name=ffv_continuous_pts_seed1 \
+    --config=cases/fluid_porous_layer/config/aluminum.py \
+    --exp_name=ffv_continuous_seed1 \
     --config.diff.scheme=ffv_continuous \
     --config.diff.use_continuous_mesh=True \
     --config.seed=1
+
+# Continue an interrupted run
+python scripts/train.py --config=... --exp_name=ffv_continuous_seed1 --config.training.resume=True
+
+# Tests (CPU): fast suite, then the training tests
+pytest
+pytest -m slow
 ```
 
-Notebooks in `notebooks/` import the same helpers (`porous_pinn.experiment`) and
-read/write the same `outputs/<case>/` folders. Reload a run with
-`load_saved_model(exp_name, org_config, outputs_dir=case_outputs_dir("<case>"))`.
+W&B logging is off by default; set `WANDB_MODE=offline` (or `online`) to enable it. In notebooks:
+
+```python
+from functools import partial
+from cases.experiment import run_experiment, load_run
+from cases.fluid_porous_layer.config import aluminum
+
+model, history = run_experiment("fluid_porous_layer", "my_run", aluminum)
+model, history, config = load_run("fluid_porous_layer", "my_run", aluminum)
+```

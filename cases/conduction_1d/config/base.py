@@ -10,7 +10,7 @@ def get_config():
     # =========================================================================
     config.wandb = wandb = ml_collections.ConfigDict()
     wandb.project = "1D-Conjugate-Heat-Conduction-PINN"
-    wandb.name = "1D_Conjugate_Conduction"
+    wandb.name = "conduction_1d"
     wandb.tag = None
 
     # =========================================================================
@@ -117,11 +117,6 @@ def get_config():
     diff.h_stencil = 0.01
     diff.n_x = 101
     diff.use_continuous_mesh = False
-    diff.pts_bounds = pts_bounds = ml_collections.ConfigDict()
-    pts_bounds.enabled = False
-    pts_bounds.c_diffusive = 0.5  # Áp dụng cho T (toán tử khuếch tán bậc 2): tau_max = C * h^2
-    pts_bounds.tau_abs_max = 1.0  # Trần tuyệt đối cho tau
-    pts_bounds.tau_abs_min = 1e-6  # Sàn tuyệt đối cho tau
 
     # =========================================================================
     # 9. Logging & Checkpoint Saving
@@ -129,12 +124,22 @@ def get_config():
     config.logging = logging = ml_collections.ConfigDict()
     logging.log_every_steps = 100
     logging.log_errors = True
+    logging.log_lr = True
     logging.log_losses = True
+    logging.log_raw_losses = True
+    logging.log_loss_weights = True
+    logging.log_pts_weights = True
+    logging.log_grads = False
 
     config.saving = saving = ml_collections.ConfigDict()
     saving.save_every_steps = 5000
     saving.num_keep_ckpts = 3
+    saving.ckpt_path = None  # gốc thư mục run; scripts/train.py đặt thành outputs/<case>
 
     config.seed = 42
+
+    # Precision của phép nhân ma trận trên GPU. "highest" = FP32 đầy đủ; mặc định của
+    # JAX trên GPU Ampere là TF32, làm ψ_max lệch ~1% (xem ROADMAP.md).
+    config.jax_matmul_precision = "highest"
 
     return config

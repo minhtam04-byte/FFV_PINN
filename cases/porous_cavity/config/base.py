@@ -9,8 +9,8 @@ def get_config():
     # 1. Weights & Biases Logging
     # =========================================================================
     config.wandb = wandb = ml_collections.ConfigDict()
-    wandb.project = "porous_layer-natural-convection-PINN"
-    wandb.name = "PorousNC_layer"
+    wandb.project = "Porous-Natural-Convection-PINN"
+    wandb.name = "porous_cavity"
     wandb.tag = None
 
     # =========================================================================
@@ -21,16 +21,13 @@ def get_config():
     physics.L = 1.0
 
     # Các số không thứ nguyên
-    physics.Pr = 6.44
-    physics.Ra = 3.7e6
-    physics.Da = 1.534e-5       # Cập nhật theo Table 4
-    physics.epsilon = 0.4
-    physics.F_eps = 0.554
-    physics.lambda_k = 37.47    # Cập nhật alpha_m = 37.47 (Table 4)
-    physics.T_ref = 0.5
-    physics.porous_x_start = 1.0 / 3.0
-    physics.porous_x_end = 2.0 / 3.0
-
+    physics.Pr = 0.71  # Không khí
+    physics.Ra = 1e4  # Bắt đầu thử nghiệm ở vùng ổn định 1e4 trước khi tăng lên 1e6 - 1e8
+    physics.Da = 1e6  # Số Darcy
+    physics.epsilon = 0.999  # Độ rỗng môi trường xốp
+    physics.F_eps = 0.1  # Hệ số cản Forchheimer phi tuyến
+    physics.T_ref = 0.5  # Nhiệt độ tham chiếu (Boussinesq)
+    physics.lambda_k = 1.0
 
     # =========================================================================
     # 3. Neural Network Architecture
@@ -41,7 +38,7 @@ def get_config():
     arch.num_layers = 4
     arch.hidden_dim = 128
     arch.out_dim = 4  # BẮT BUỘC: 4 biến đầu ra (u, v, p, T)
-    arch.activation = "silu"  # "tanh", "relu", "swish", "gelu"
+    arch.activation = "silu"
     arch.periodicity = None  # Không gian kín có vách, không dùng periodic boundary
 
     # Fourier Feature Embedding
@@ -71,7 +68,7 @@ def get_config():
     # 5. Training Hyperparameters & Collocation Sampling
     # =========================================================================
     config.training = training = ml_collections.ConfigDict()
-    training.max_steps = 100000
+    training.max_steps = 50000
     training.resume = False
     training.batch_size = 4096  # Kích thước batch collocation nội miền
     training.random_sampling = True
@@ -87,7 +84,7 @@ def get_config():
         "u_bc": 10.0,
         "v_bc": 10.0,
         "T_dirichlet_bc": 10.0,
-        "T_neumann_bc": 10.0,
+        "T_neumann_bc": 1.0,
         "u_res": 1.0,
         "v_res": 1.0,
         "p_res": 1.0,
@@ -141,7 +138,8 @@ def get_config():
 
     config.saving = saving = ml_collections.ConfigDict()
     saving.save_every_steps = 10000
-    saving.num_keep_ckpts = 10
+    saving.num_keep_ckpts = 5
+    saving.ckpt_path = None  # gốc thư mục run; scripts/train.py đặt thành outputs/<case>
 
     # Khởi tạo kích thước đầu vào (tọa độ không gian 2D: x, y)
     config.input_dim = 2
@@ -151,17 +149,18 @@ def get_config():
     # 9. Differential Scheme
     # =========================================================================
     config.diff = diff = ml_collections.ConfigDict()
-    diff.scheme = "ffv_continuous" # "nd" - numerical differentiation, "ad" - automatic differentiation; "can" - coupled automatic-numerical differentiation (CAN-PDE)
-    diff.h_stencil = 0.0125 #0.01667# only apply with "nd" option 
-    diff.n_x = 80
-    diff.n_y = 80
-    diff.use_continuous_mesh = False
+    diff.scheme = "ffv_continuous" # "ad" | "ffv" | "ffv_continuous" | "can_ffv"
+    diff.h_stencil = 0.01  # create_batches đặt lại h = L / n_x
+    diff.n_x = 100
+    diff.n_y = 100
+    diff.use_continuous_mesh = True
 
-    # =========================================================================
-    # 10. VRBA (Variable Residual Balancing Algorithm) Configuration
-    # =========================================================================
-    config.vrba = vrba = ml_collections.ConfigDict()
-    vrba.enabled = False  # Bật True để sử dụng vRBA  
-    vrba.phi = 0.7
+    # Precision của phép nhân ma trận trên GPU. "highest" = FP32 đầy đủ; mặc định của
+    # JAX trên GPU Ampere là TF32, làm ψ_max lệch ~1% (xem ROADMAP.md).
+    config.jax_matmul_precision = "highest"
+
+    # Tham chiếu de Vahl Davis (1983) cho Ra = 1e4, Pr = 0.71 (Da, eps ở trên ≈ chất lỏng thuần).
+    # Đổi Ra thì phải đổi hoặc bỏ (None) các giá trị này.
+    config.reference = ml_collections.ConfigDict({"psi_max": 5.071, "Nu": 2.243})
 
     return config

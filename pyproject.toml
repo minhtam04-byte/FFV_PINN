@@ -37,3 +37,8 @@ dev = [
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["jaxpi*", "porous_pinn*", "cases*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-m 'not slow'"
+filterwarnings = ["ignore::DeprecationWarning"]

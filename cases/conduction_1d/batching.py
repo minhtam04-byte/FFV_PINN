@@ -1,14 +1,9 @@
-"""Batch generation and experiment runner for the 1D conjugate-conduction case.
-
-Moved verbatim from notebooks/conduction_1d.ipynb (outputs_dir added).
-"""
-import copy
+"""Collocation-point batches for the 1D conjugate-conduction case."""
 import itertools
 
 import jax.numpy as jnp
 
 from jaxpi.samplers import MeshSampler, UniformSampler
-from cases.conduction_1d.train import train_1d
 
 
 def create_batches_1d(config):
@@ -61,21 +56,3 @@ def create_batches_1d(config):
     if config.training.random_sampling:
         return sampler
     return itertools.repeat(next(iter(sampler)))
-
-
-def run_ablation_experiment_1d(exp_name, org_config_mod, modify_config_fn=None,pts=False,use_continuous_mesh=False, outputs_dir=None):
-    """
-    Hàm chạy thí nghiệm Ablation Study tự động:
-    Clone config sâu, áp dụng các tuỳ chỉnh, sinh batch và tiến hành huấn luyện.
-    """
-    sub_config = copy.deepcopy(org_config_mod.get_config())
-    sub_config.wandb.name = f"{sub_config.wandb.name}_{exp_name}"
-
-    if modify_config_fn is not None:
-        sub_config = modify_config_fn(sub_config,pts=pts,use_continuous_mesh=use_continuous_mesh)
-
-    batches = create_batches_1d(sub_config)
-    
-    # Huấn luyện mô hình 1D (hàm train_1d nhận trực tiếp config và samplers)
-    model, history = train_1d(config=sub_config, sampler=batches, outputs_dir=outputs_dir)
-    return model, history
