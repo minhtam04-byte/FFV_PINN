@@ -10,6 +10,11 @@ import jax.numpy as jnp
 from jaxpi.samplers import MeshSampler, UniformSampler
 
 
+def _sampler_key(config):
+    """Khóa ngẫu nhiên của sampler; mặc định 1234 như jaxpi.samplers."""
+    return jax.random.PRNGKey(config.training.get("sampler_seed", 1234))
+
+
 def create_batches(config):
     H, L = float(config.physics.H), float(config.physics.L)
     scheme = getattr(config.diff, "scheme", "ad").lower().strip()
@@ -42,7 +47,7 @@ def create_batches(config):
             safe_x = stencil_reach * dx + 1e-4
             safe_y = stencil_reach * dy + 1e-4
             domain_safe = jnp.array([[safe_x, L - safe_x], [safe_y, H - safe_y]])
-            sampler = UniformSampler(domain_safe, config.training.batch_size)
+            sampler = UniformSampler(domain_safe, config.training.batch_size, rng_key=_sampler_key(config))
             if config.training.random_sampling:
                 return sampler
             return itertools.repeat(next(iter(sampler)))
@@ -76,7 +81,8 @@ def create_batches(config):
                 return itertools.repeat(mesh_points[:usable_pts])
             else:
                 sampler = MeshSampler(
-                    mesh=mesh_points, batch_size=config.training.batch_size
+                    mesh=mesh_points, batch_size=config.training.batch_size,
+                    rng_key=_sampler_key(config),
                 )
                 if config.training.random_sampling:
                     return sampler
@@ -84,7 +90,7 @@ def create_batches(config):
 
     elif scheme == "ad":
         domain = jnp.array([[0.0, L], [0.0, H]])
-        sampler = UniformSampler(domain, config.training.batch_size)
+        sampler = UniformSampler(domain, config.training.batch_size, rng_key=_sampler_key(config))
         if config.training.random_sampling:
             return sampler
         return itertools.repeat(next(iter(sampler)))

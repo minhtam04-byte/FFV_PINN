@@ -75,6 +75,7 @@ def get_config():
     training.resume = False
     training.batch_size = 4096  # Kích thước batch collocation nội miền
     training.random_sampling = True
+    training.sampler_seed = 1234  # khóa ngẫu nhiên của sampler collocation (config.seed chỉ khởi tạo mạng)
 
     # =========================================================================
     # 6. Global Loss Weighting (GradNorm Balancing)
