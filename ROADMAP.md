@@ -38,10 +38,16 @@ Các việc nghiên cứu còn mở cho bài báo. Đánh dấu `[x]` khi xong, 
       ở giữa P–E so với có trọng số khoảng cách; drag/buoyancy giá trị điểm so với tích phân dưới ô; k theo phương y). Để tách
       ảnh hưởng của cách lấy mẫu, so `ffv_continuous` với `use_continuous_mesh=False` và `True`.
 
-- [ ] **ffv_continuous phủ vùng sát vách.** Hiện tâm control volume (CV) được lấy mẫu trong [h, 1−h], nên dải [0, h/2]
-      không thuộc CV nào. Đây lại là lớp biên nhiệt (δ ≈ Ra^(-1/4) ≈ 0.023 ≈ 2h). Đề xuất: tâm CV trong [h/2, 1−h/2];
-      gần vách, thông lượng khuếch tán tại mặt tính bằng gradient AD tại chính điểm mặt (chỉ cần đạo hàm bậc 1) thay cho
-      (φ_P − φ_W)/h; giữ trung bình điều hòa tại mặt phân cách. Kiểm tra trước trên `conduction_1d` (có nghiệm giải tích).
+- [x] 2026-10-20: **Phủ vùng sát vách** bằng scheme mới `ffv_compact`: khuếch tán lấy từ giá trị tại mặt (cách P h/2),
+      stencil vươn h/2, tâm CV trong [h/2, L−h/2]. Run kiểm chứng (aluminum, 100k bước, 1 seed, đánh giá trên lưới 401²):
+
+      | scheme           | ψ_max            | lỗi khối lượng | Nu nóng / giữa / lạnh  | thời gian |
+      |------------------|------------------|----------------|------------------------|-----------|
+      | ffv_continuous   | 24.66 (+6.3% LBM) | 4.02%          | 9.04 / 8.54 / 8.33     | 42 phút   |
+      | ffv_compact      | 24.76 (+6.7% LBM) | 0.83%          | 8.80 / 8.92 / 8.85     | 33 phút   |
+
+      Bảo toàn khối lượng và năng lượng tốt hơn ~5–15 lần, nhưng **ψ_max gần như không đổi**: sai lệch ψ_max còn lại không do
+      vùng sát vách. Nghi phạm tiếp theo: sai số rời rạc theo h (mục C) và ε chưa rõ của case 4.3.
 - [ ] Luận điểm cho ffv_continuous trong bài: (1) kích thước CV h tách khỏi vị trí mặt phân cách nhờ phần thể tích dưới ô
       chính xác; (2) các CV ngẫu nhiên chồng lấn ≈ dạng yếu với hàm thử hộp độ rộng h, tích phân Monte Carlo (liên hệ
       hp-VPINN, control-volume PINN). Nêu thẳng điểm yếu: mất tính bảo toàn toàn cục rời rạc, rồi đo |ψ(y=1)| và
@@ -62,6 +68,9 @@ Các việc nghiên cứu còn mở cho bài báo. Đánh dấu `[x]` khi xong, 
 - [ ] Mọi số liệu chính: mean ± std trên ≥ 5 seed (`scripts/train.py --config.seed=...`).
 - [ ] Lưới cố định đã căn mặt phân cách vs ffv_continuous ở cùng h, cùng PTS.
 - [ ] Đo trên toàn trường: L2 của u, v, T; Nu trung bình; profile v(x), T(x) tại y = 0.5; so với LBM và Beckermann.
+- [ ] Bằng chứng cho luận điểm trung tâm: với AD (aluminum), Nu ở hai vách cân bằng (8.11 / 8.08) nhưng thông lượng nhiệt
+      tổng qua mặt cắt giữa (trong lớp xốp) là 38.1, gấp 4.7 lần. AD không giảm gradient T trong vùng xốp theo 1/λ, vì thiếu
+      điều kiện liên tục thông lượng. Báo cáo `metric/Nu_mid` cho mọi scheme.
 - [ ] Baseline AD-PINN có xử lý mặt phân cách (cPINN/XPINN có ràng buộc liên tục thông lượng, hoặc mạng discontinuity-capturing).
       AD-PINN hiện tại (`porous_pinn/models.py`, nhánh `ad`) không có điều kiện liên tục thông lượng tại mặt phân cách.
 
