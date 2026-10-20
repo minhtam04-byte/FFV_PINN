@@ -131,3 +131,68 @@ def plot_ablation_histories(results, log_freq=100):
 
     plt.tight_layout()
     plt.show()
+
+
+
+def compute_nusselt_number(T_pred, x_lin, y_lin):
+    """
+    Tính toán số Nusselt cục bộ (local Nu) và trung bình (average Nu) tại vách nóng x = 0.
+    Sử dụng sai phân hướng tới bậc 2 (2nd-order forward difference).
+    """
+    dx = x_lin[1] - x_lin[0]
+
+    T_0 = T_pred[:, 0]
+    T_1 = T_pred[:, 1]
+    T_2 = T_pred[:, 2]
+
+    dT_dx_at_wall = (-3.0 * T_0 + 4.0 * T_1 - T_2) / (2.0 * dx)
+
+    Nu_local = -dT_dx_at_wall 
+    Nu_avg = np.trapezoid(Nu_local, x=y_lin)
+    
+    print("\n" + "="*50)
+    print(f"Calculated Average Nusselt Number (Nu_avg): {Nu_avg:.4f}")
+    print(f"Maximum Local Nusselt Number (Nu_max): {np.max(Nu_local):.4f}")
+    print("="*50)
+    plt.figure(figsize=(5, 6))
+    plt.plot(Nu_local, y_lin, 'r-', linewidth=2)
+    plt.title("Local Nusselt Number along Hot Wall ($x=0$)")
+    plt.xlabel("$Nu$")
+    plt.ylabel("$y$")
+    plt.grid(True, linestyle='--', alpha=0.6)
+    plt.show()
+    
+    return Nu_avg, Nu_local
+
+import jax.numpy as jnp
+
+
+def sample_boundaries_natural_convection(num_pts_per_side=128):
+  """Sinh tọa độ và giá trị đích cho 4 cạnh của bài toán Natural Convection."""
+  coords = jnp.linspace(0.0, 1.0, num_pts_per_side)
+
+  # 1. Vách trái (x=0): u=0, v=0, T=1.0
+  left_xy = jnp.column_stack([jnp.zeros_like(coords), coords])
+  left_T = jnp.ones((num_pts_per_side, 1))
+
+  # 2. Vách phải (x=1): u=0, v=0, T=0.0
+  right_xy = jnp.column_stack([jnp.ones_like(coords), coords])
+  right_T = jnp.zeros((num_pts_per_side, 1))
+
+  # 3. Vách đáy (y=0): u=0, v=0, dT/dy=0
+  bottom_xy = jnp.column_stack([coords, jnp.zeros_like(coords)])
+
+  # 4. Vách đỉnh (y=1): u=0, v=0, dT/dy=0
+  top_xy = jnp.column_stack([coords, jnp.ones_like(coords)])
+
+  # Toàn bộ điểm vách cho vận tốc no-slip (4 cạnh)
+  wall_xy = jnp.vstack([left_xy, right_xy, bottom_xy, top_xy])
+
+  return {
+      "wall_xy": wall_xy,
+      "left_xy": left_xy,
+      "left_T": left_T,
+      "right_xy": right_xy,
+      "right_T": right_T,
+      "adiabatic_xy": jnp.vstack([bottom_xy, top_xy]),
+  }

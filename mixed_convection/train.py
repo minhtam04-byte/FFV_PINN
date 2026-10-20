@@ -4,11 +4,11 @@ import jax
 from tqdm.notebook import tqdm
 import os
 from Tam_project_2.jaxpi2.models_1 import create_lr_schedule, create_optimizer, create_arch, create_train_state
-from jaxpi2.samplers import UniformSampler, MeshSampler
-from jaxpi2.checkpointing import create_checkpoint_manager
-from jaxpi2.logging import Logger
-from jaxpi2.checkpointing import save_checkpoint
-from jaxpi2.utils import create_update_scheduler
+from jaxpi.samplers import UniformSampler, MeshSampler
+from jaxpi.checkpointing import create_checkpoint_manager
+from jaxpi.logging import Logger
+from jaxpi.checkpointing import save_checkpoint
+from jaxpi.utils import create_update_scheduler
 from mixed_convection import models
 from mixed_convection.config import base_line
 import pickle
