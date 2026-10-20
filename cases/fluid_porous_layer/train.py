@@ -13,8 +13,8 @@ from jaxpi.models import (
     create_train_state,
 )
 from jaxpi.utils import create_update_scheduler
-from nc_porous_layer import models
-from nc_porous.sampler import R3CollocationSampler
+from porous_pinn import models
+from porous_pinn.samplers import R3CollocationSampler
 jax.config.update("jax_default_matmul_precision", "highest")
 
 def sample_batches(samplers):
@@ -27,10 +27,12 @@ def sample_batches(samplers):
     yield from iter(samplers)
 
 
-def train_porous(config, samplers):
+def train_porous(config, samplers, outputs_dir=None):
   # 1. Thiết lập thư mục lưu checkpoint và history
-  ckpt_dir = os.path.join(os.getcwd(), "outputs", config.wandb.name, "ckpt")
-  history_dir = os.path.join(os.getcwd(), "outputs", config.wandb.name)
+  if outputs_dir is None:
+    outputs_dir = os.path.join(os.getcwd(), "outputs")
+  ckpt_dir = os.path.join(outputs_dir, config.wandb.name, "ckpt")
+  history_dir = os.path.join(outputs_dir, config.wandb.name)
   os.makedirs(history_dir, exist_ok=True)
   history_path = os.path.join(history_dir, "history.pkl")
 

@@ -16,7 +16,7 @@ from jaxpi.models import (
     create_train_state,
 )
 from jaxpi.utils import create_update_scheduler
-from nc_porous_1d import models
+from cases.conduction_1d import models
 
 
 def extract_last_bias(params):
@@ -87,9 +87,11 @@ def plot_diagnostic_history(diag_history, save_path):
     print(f"--> Đã lưu biểu đồ phân tích chẩn đoán tại: {save_path}")
 
 
-def train_1d(config, sampler):
-    ckpt_dir = os.path.join(os.getcwd(), "outputs", config.wandb.name, "ckpt")
-    history_dir = os.path.join(os.getcwd(), "outputs", config.wandb.name)
+def train_1d(config, sampler, outputs_dir=None):
+    if outputs_dir is None:
+        outputs_dir = os.path.join(os.getcwd(), "outputs")
+    ckpt_dir = os.path.join(outputs_dir, config.wandb.name, "ckpt")
+    history_dir = os.path.join(outputs_dir, config.wandb.name)
     os.makedirs(history_dir, exist_ok=True)
     history_path = os.path.join(history_dir, "history.pkl")
     diag_plot_path = os.path.join(history_dir, "diagnostic_stability.png")

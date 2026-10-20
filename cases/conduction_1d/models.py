@@ -4,7 +4,7 @@ from jax import jit, vmap
 import jax.numpy as jnp
 
 from jaxpi.models import ForwardBVP
-from nc_porous_1d.numerical_pde import (
+from cases.conduction_1d.numerical_pde import (
     compute_can_pde_residuals_1d,
     compute_ffv_pde_residuals_1d,
     get_k_local,

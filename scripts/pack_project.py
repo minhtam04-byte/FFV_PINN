@@ -1,7 +1,7 @@
 import os
 
 # Chỉ định rõ các thư mục và file gốc cần đóng gói
-TARGET_DIRS = ["nc_porous", "nc_porous_layer", "jaxpi", "nc_porous_1d"]
+TARGET_DIRS = ["jaxpi", "porous_pinn", "cases", "scripts"]
 ROOT_FILES = ["pyproject.toml", "README.md"]
 ALLOWED_EXTENSIONS = (".py", ".toml", ".md")
 OUTPUT_FILE = "core_codebase.txt"

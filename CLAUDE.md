@@ -4,61 +4,46 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-Research code for a paper (see `paper_outline.md`) on PINNs for natural convection in porous media, solved with JAX/Flax. It compares automatic differentiation against finite-volume-style stencil residuals (FFV-PINN, CAN-PDE), and uses adaptive pseudo-time stepping (PTS) from Wang et al. 2026. The governing equations (Darcy–Brinkman–Forchheimer momentum, continuity, energy) and boundary conditions are written out in `readme.md`. Its "Directory Structure" section is out of date: `jaxpi2/`, `run_sweep.py` and `analysis.ipynb` no longer exist.
+Research code for a paper (`paper_outline.md`) on PINNs for conjugate natural convection in porous media, solved with JAX/Flax. It combines finite-volume residuals (inspired by FFV-PINN, Wei et al. 2025) with adaptive pseudo-time stepping (PTS) from Wang et al. 2026, whose `jaxpi2` framework is vendored as `jaxpi/`. The benchmarks come from Gao et al. 2017 (IJHMT 105). The governing equations are in `README.md`. Reference PDFs are in `references/` (git-ignored).
+
+Open research tasks, known bugs and agreed paper framing are tracked in **`ROADMAP.md`**. Read it before starting work, and update it when an item is done.
 
 ## Environment
 
-- Use the local virtualenv `./venv` (Python 3.14, CUDA JAX): `source venv/bin/activate.fish` (fish shell).
-- The core framework installs as an editable package: `pip install -e .`. The distribution is named `jaxpi2` in `pyproject.toml`, but the import name is `jaxpi`.
-- There is no test suite, linter config or build step. Code is checked by running experiments.
-- `python pack_project.py` concatenates the core sources into `core_codebase.txt` so they can be shared as context.
+- Virtualenv `./venv` (Python 3.14, CUDA JAX); activate with `source venv/bin/activate.fish`. Entry points add the repo root to `sys.path` themselves, so no install is needed. The editable install in the venv still points at the removed `jaxpi2/`; if you reinstall, use `pip install -e . --no-deps`, because `pyproject.toml` pins a different JAX/CUDA build than the venv has.
+- There is no test suite or linter.
 
-## Running experiments
+## Running
 
-Experiments are run from each case's `run_experiment.ipynb`, not from CLI entry points. Each notebook:
-1. puts the repo root on `sys.path`;
-2. defines `create_batches(config)` to build the collocation sampler;
-3. calls `run_ablation_experiment(exp_name, org_config, modify_config_fn)`, which loads a config module's `get_config()`, applies overrides, sets `wandb.name = f"{wandb.name}_{exp_name}"`, and calls the case's `train.train_porous(config, samplers)`;
-4. reloads finished runs with `load_saved_model(exp_name, ...)`, which must rebuild the identical config to restore the checkpoint.
-
-Outputs go to `os.getcwd()/outputs/<wandb.name>/`: an Orbax checkpoint in `ckpt/` and a pickled `history.pkl` holding the loss, per-term losses and `tau_<var>` histories. Paths are relative to the working directory, so run notebooks from inside their case directory (for example `nc_porous_layer/`).
+- CLI: `python scripts/train.py --config=cases/<case>/config/<file>.py --exp_name=<suffix> [--config.a.b=value ...]`. The case comes from the config path. The run goes to `outputs/<case>/<wandb.name>_<exp_name>/` with a `run_info.json` (resolved config, git commit, dirty flag). The script refuses to overwrite an existing run.
+- Notebooks: `notebooks/<case>.ipynb`. Cell 0 imports the helpers and binds them to the case with `functools.partial`: `run_ablation_experiment(exp_name, org_config, modify_config_fn)` and `load_saved_model(exp_name, org_config, step=None)`, both pointing at `outputs/<case>/`. Analysis and plotting functions are still defined inside the notebooks.
+- Run folders keep their historical names (`PorousNC_layer_<exp>`, `1D_Conjugate_Conduction_<exp>`, ...), so `load_saved_model(exp_name, ...)` still finds old runs.
 
 ## Architecture
 
-### `jaxpi/`: the shared PINN framework (adapted from Sifan Wang's jaxpi)
-- `models.py`: `PINN` base class with the subclasses `ForwardBVP` (steady problems, used here) and `ForwardIVP`. It also has the factories `create_arch`, `create_lr_schedule`, `create_optimizer` (SOAP/Adam) and `create_train_state`. `TrainState` carries `loss_weights`, `pts_weights` and `prev_params`.
-  - `step`, `update_loss_weights` and `update_pts_weights` are `jax.shard_map` functions over a 1-D `"batch"` device mesh. Batch sizes must be divisible by `jax.device_count()`.
-  - Model methods use `@partial(jit, static_argnums=(0,))`. `PINN.__hash__` returns a process-unique id so that a recreated model does not reuse stale traces. Don't replace this hash.
-  - **PTS** (`compute_pts_weights`): for each variable, τ = ‖Δresidual‖ / ‖Δsolution‖ between `params` and `prev_params` (a Barzilai–Borwein estimate). It is scaled by a cosine shrink factor driven by the log₁₀ drop in loss (`pseudo_time.shrink`) and clipped to [1e-2, 100].
-  - **Loss weighting** (`compute_loss_weights`): gradient-norm balancing across the keys of `losses()`.
-- `derivatives.py`: forward-mode derivatives (`value_and_jacfwd`, `hessian_diag_fwd`) that build Laplacians from the Hessian diagonal only.
-- `archs.py`: `Mlp`, `ModifiedMlp` and `PirateNet`, with Fourier and periodic embeddings. `samplers.py`: `UniformSampler`, `MeshSampler` and the FVM samplers.
+- `jaxpi/` is the framework. Keep it close to upstream; algorithm changes belong in `porous_pinn/` or `cases/`.
+  - `models.py`: `PINN` base class with `ForwardBVP`/`ForwardIVP`, factories (`create_arch`, `create_optimizer` for SOAP/Adam, `create_train_state`), and `TrainState` (`loss_weights`, `pts_weights`, `prev_params`).
+  - `step`, `update_loss_weights` and `update_pts_weights` are `jax.shard_map` over a 1-D `"batch"` mesh. Batch sizes must be divisible by `jax.device_count()`.
+  - Model methods use `@partial(jit, static_argnums=(0,))`. `PINN.__hash__` returns a process-unique id; do not replace it.
+  - PTS (`compute_pts_weights`): τ = ‖Δresidual‖/‖Δsol_net‖ between `params` and `prev_params` (Barzilai–Borwein). It is multiplied by a cosine shrink on the log₁₀ loss drop and clipped to [1e-2, 100]. Loss weighting is grad-norm balancing.
+- `porous_pinn/` holds the shared 2D code.
+  - `numerical_pde.py`: porous coefficients (`compute_porous_and_buoyancy`, which handles the piecewise porous zone `porous_x_start`–`porous_x_end`) and the FV schemes, dispatched by `compute_pde_residuals_nd(..., scheme=)` to `ffv`, `ffv_continuous` or `can_ffv`.
+  - `models.py`: `PorousNaturalConvection2D`, used by both 2D cases (fluid–porous–fluid is just a config with `porous_x_start/end`).
+  - `batching.py`: `create_batches` overwrites `diff.h_stencil = L / n_x`, requires square cells, and keeps stencil centres one reach from the walls. Fixed grid uses cell centres; `use_continuous_mesh` samples uniform random centres instead.
+  - `experiment.py`: run, reload and outputs-path helpers.
+- `cases/<case>/` contains `train.py` (case trainer, `outputs_dir=None` defaults to `<cwd>/outputs`) and `config/*.py` (`ml_collections` `get_config()`). `conduction_1d` also has its own `models.py`, `numerical_pde.py` and `experiment.py`.
+- `legacy/` and `notebooks/legacy/` hold old, non-runnable code. Ignore them unless asked.
 
-### Name-keyed contracts between a model and its config
-These keys are matched **by name** and checked with asserts, so they must stay consistent:
-- the model's class attribute `variables = ("u", "v", "p", "T")`;
-- the dict returned by `r_net`, keyed by the variable each residual evolves in pseudo-time (momentum-x → `"u"`, continuity → `"p"`, energy → `"T"`);
-- the keys of `config.pseudo_time.pts_weights`;
-- the keys of `config.loss_weighting.loss_weights`, which must equal the keys returned by `losses()`. Residual terms are automatically named `<var>_res`; boundary terms are named by the model (for example `u_bc`, `T_dirichlet_bc`, `T_neumann_bc`).
+### Name-keyed contracts (enforced by asserts)
+`variables = ("u", "v", "p", "T")` on the model; `r_net` returns a dict keyed by the variable each residual evolves in pseudo-time (momentum-x → `u`, continuity → `p`, energy → `T`); `config.pseudo_time.pts_weights` uses the same keys; `config.loss_weighting.loss_weights` keys must equal those of `losses()` (residuals are auto-named `<var>_res`).
 
-### Case directories (each has `models.py`, `train.py`, `config/*.py`, `run_experiment.ipynb`)
-- `nc_porous/`: homogeneous porous cavity. It also holds the **shared physics modules** that other cases import:
-  - `numerical_pde.py`: the stencil residual schemes, dispatched by `compute_pde_residuals_nd(..., scheme=)` to `ffv`, `ffv_continuous`, `can`, `can_ffv` or `nd`. It also has `compute_porous_and_buoyancy`, which handles the piecewise porous zone `porous_x_start`–`porous_x_end`.
-  - `utils.py`: boundary sampling and Nusselt/VTK post-processing. `sampler.py`: `R3CollocationSampler` (residual-based resampling; it did not work, per the paper outline).
-- `nc_porous_layer/`: a fluid–porous layer cavity (conjugate convection, `lambda_k` conductivity ratio). It imports from `nc_porous`.
-- `nc_porous_1d/`: 1-D conjugate heat transfer. `mixed_convection/`: an older case.
-- `old_code/`: legacy code; ignore it unless asked.
+### Schemes (`config.diff.scheme`)
+- `ad`: pointwise forward-mode AD residuals. Note that the energy equation uses `k·∇²T` piecewise and has no flux-continuity condition at the porous interface.
+- FV schemes evaluate the network at faces/neighbours at spacing `h`. `sol_net` returns a stencil-weighted cell average so that the PTS damping term matches the discrete residual.
 
-Each model subclasses `ForwardBVP` and implements `neural_net` (4 outputs: u, v, p, T), `r_net`, `losses`, and, for stencil schemes, `sol_net`.
+## Conventions and gotchas
 
-### Differentiation schemes (`config.diff.scheme`)
-- `"ad"`: pointwise residuals from forward-mode autodiff, with collocation points sampled uniformly over the whole domain.
-- Stencil schemes (`ffv`, `ffv_continuous`, `can`, `can_ffv`, `nd`): residuals come from neighbour evaluations at spacing `h`. In the notebook, `create_batches` **overwrites `diff.h_stencil = L / n_x`**, requires square cells, and keeps points one stencil reach (two for `nd`) away from the walls. `diff.use_continuous_mesh` selects random points over that inner region instead of fixed cell centres.
-- For stencil schemes, `sol_net` returns a stencil-weighted cell average rather than a point value. This makes the solution used in the PTS damping term match the discrete residual.
-
-### Training loop (`<case>/train.py: train_porous`)
-Each step does a gradient step, then (on their `update_schedule`) a PTS τ update using only the interior batch `batch["eqn"]`, then a loss-weight update. Logging happens every `logging.log_every_steps` steps, and checkpoints are written every `saving.save_every_steps` steps. Setting `training.transfer_learning` with `pretrained_ckpt_dir` initialises the parameters from an earlier run. `jax_default_matmul_precision` is set to `"highest"`.
-
-## Conventions
-- Comments, docstrings and printed messages are mostly in Vietnamese. Follow the surrounding file.
-- Configs are `ml_collections.ConfigDict` modules exposing `get_config()`. New variants are added as new files under `<case>/config/`, and notebooks override fields through `modify_config_fn`.
+- Matmul precision: `cases/fluid_porous_layer/train.py` sets `jax_default_matmul_precision="highest"` when imported; `cases/porous_cavity/train.py` does not. Evaluating the same checkpoint with and without it changes ψ_max by ~1% (see `ROADMAP.md`). When writing analysis code, set precision explicitly.
+- When asked to restructure without changing behaviour, verify it numerically: compare residuals, losses and batches before and after on fixed inputs. GPU `jnp.dot` can differ by 1 ULP between runs, so compare against a repeated run.
+- Comments, docstrings and printed messages are mostly in Vietnamese; follow the surrounding file.
+- New config variants go in as new files under `cases/<case>/config/`. Notebooks override fields through `modify_config_fn`; the CLI does it with `--config.x=...`.

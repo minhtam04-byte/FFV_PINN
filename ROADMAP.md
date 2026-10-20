@@ -1,0 +1,62 @@
+# Roadmap
+
+Các việc nghiên cứu còn mở cho bài báo. Đánh dấu `[x]` khi xong, ghi ngày và commit liên quan.
+
+## Định hướng đã chốt
+
+- Không đề cập việc reproduce FFV-PINN. Trình bày là *xây dựng trên* sơ đồ FV rút gọn của Wei et al. (2025):
+  giá trị mặt lấy trực tiếp từ mạng. Đây là ghi nhận nguồn gốc, không chỉ là "lấy cảm hứng".
+- Chỉ ra rằng residual correction loss của FFV-PINN (Eq. 18–20) tương đương PTS với 1/Δτ = a_P cố định;
+  BB-PTS của Wang et al. (2026) thay bằng ước lượng tự động. Không cần reproduce code của họ.
+- Mọi so sánh làm trong cùng một framework (cùng kiến trúc, optimizer, GradNorm, sampling); mỗi lần chỉ đổi một thành phần.
+
+## A. Lỗi và rủi ro tái lập đã biết (cần sửa code)
+
+- [ ] `notebooks/fluid_porous_layer.ipynb` cell 3: `titles` lệch với `model_benchmark`; `history_benchmark` đảo vị trí 4–5;
+      model case 1 (`..._case_1_pts_fix_grid_42_grid60_60`) bị vẽ chung với case 2; mọi ψ_max đều in nhãn "Case 1 Reference".
+- [ ] **Matmul precision là side effect khi import.** `cases/fluid_porous_layer/train.py` đặt
+      `jax_default_matmul_precision="highest"` ngay khi được import; `cases/porous_cavity/train.py` thì không, nên case này train
+      bằng TF32 trên GPU Ampere. Cùng checkpoint `diff_continuous_ffv_case_2_pts_50_grid80_80_8`: ψ_max = 24.49 (highest)
+      so với 24.78 (mặc định) — lệch 1.2% chỉ vì precision lúc đánh giá. Cần đặt precision tường minh ở mọi entry point
+      (scripts, notebooks) và ghi vào config.
+- [ ] Hai trainer 2D (`cases/*/train.py`) khác nhau 3 điểm: dòng đặt precision nói trên, hook R3 sampler, và nhãn log
+      `tau_` vs `weight_`. Gộp thành một trainer sau khi quyết định hành vi chung.
+- [ ] Gom `evaluate_fields` / `compute_stream_function_and_psimax` (hiện định nghĩa 2 lần trong notebook, lưới 80 và 120)
+      vào `porous_pinn/postprocess.py`: đánh giá trên lưới ≥ 401², báo cáo |ψ(y=1)| làm chỉ số bảo toàn khối lượng.
+- [ ] README: phương trình động lượng ghi `sqrt(Pr/Ra)(1/ε)∇²u` nhưng code dùng `sqrt(Pr/Ra)∇²u` (khớp Gao et al. với J = 1);
+      README ghi "warmup cosine decay" nhưng các config dùng `exponential_decay`. Xác định bên nào đúng.
+- [ ] `notebooks/legacy/porous_cavity_train_old.ipynb` dùng scheme `nd`/`can` đã bị xóa khỏi `numerical_pde.py`, nên không chạy được.
+      Các run cũ `*_can_*`, `*_nd_*` trong `outputs/` cũng không nạp lại được bằng code hiện tại.
+
+## B. Phương pháp số
+
+- [ ] **ffv_continuous phủ vùng sát vách.** Hiện tâm control volume (CV) được lấy mẫu trong [h, 1−h], nên dải [0, h/2]
+      không thuộc CV nào. Đây lại là lớp biên nhiệt (δ ≈ Ra^(-1/4) ≈ 0.023 ≈ 2h). Đề xuất: tâm CV trong [h/2, 1−h/2];
+      gần vách, thông lượng khuếch tán tại mặt tính bằng gradient AD tại chính điểm mặt (chỉ cần đạo hàm bậc 1) thay cho
+      (φ_P − φ_W)/h; giữ trung bình điều hòa tại mặt phân cách. Kiểm tra trước trên `conduction_1d` (có nghiệm giải tích).
+- [ ] Luận điểm cho ffv_continuous trong bài: (1) kích thước CV h tách khỏi vị trí mặt phân cách nhờ phần thể tích dưới ô
+      chính xác; (2) các CV ngẫu nhiên chồng lấn ≈ dạng yếu với hàm thử hộp độ rộng h, tích phân Monte Carlo (liên hệ
+      hp-VPINN, control-volume PINN). Nêu thẳng điểm yếu: mất tính bảo toàn toàn cục rời rạc, rồi đo |ψ(y=1)| và
+      Nu_hot so với Nu_cold. Lý do "h là số lẻ" không phải lập luận khoa học, không dùng.
+- [ ] Lưới cố định: chọn n_x chia hết cho 3 (60, 81, 120) để mặt phân cách 1/3, 2/3 trùng mặt ô
+      (`compute_ffv_pde_residuals` giả định mặt phân cách nằm giữa P và E).
+- [ ] `sol_net` dùng trọng số [0.5, 0.125×4] → φ_P + h²/32·∇²φ; trung bình ô đúng là [1/3, 1/6×4] (φ_P + h²/24·∇²φ).
+- [ ] Ablation PTS: tắt / τ = a_P cố định (≈ RC loss của FFV-PINN) / BB thích ứng.
+
+## C. Kiểm chứng cho bài báo
+
+- [ ] Lấy ε của case 4.3 từ Beckermann et al. (1988, JFM 186); hiện giả định 0.4. Phân tích độ nhạy ψ_max theo ε.
+- [ ] Lời giải tham chiếu hội tụ lưới (≥ 480²) bằng jax-dugks (`venv/src/jax-dugks`) hoặc FVM SIMPLE.
+- [ ] FVM cổ điển với cùng sơ đồ, cùng h: FFV-PINN(h) − FVM(h) = sai số tối ưu; FVM(h) − tham chiếu = sai số rời rạc.
+- [ ] Hội tụ theo h ∈ {1/40, 1/60, 1/80, 1/120, 1/160}, bậc hội tụ quan sát được.
+- [ ] Mọi số liệu chính: mean ± std trên ≥ 5 seed (`scripts/train.py --config.seed=...`).
+- [ ] Lưới cố định đã căn mặt phân cách vs ffv_continuous ở cùng h, cùng PTS.
+- [ ] Đo trên toàn trường: L2 của u, v, T; Nu trung bình; profile v(x), T(x) tại y = 0.5; so với LBM và Beckermann.
+- [ ] Baseline AD-PINN có xử lý mặt phân cách (cPINN/XPINN có ràng buộc liên tục thông lượng, hoặc mạng discontinuity-capturing).
+      AD-PINN hiện tại (`porous_pinn/models.py`, nhánh `ad`) không có điều kiện liên tục thông lượng tại mặt phân cách.
+
+## D. Mở rộng
+
+- [ ] Bài toán ngược: xác định Da, k_e/k_f hoặc ε từ vài điểm đo nhiệt độ.
+- [ ] Case 4.4 (solid–porous có tường dẫn nhiệt, Bảng 2 của Gao et al.) và Bảng 1 (cavity đồng nhất, Nu).
+- [ ] Bảng chi phí: thời gian, GPU, so với LBM/FVM.

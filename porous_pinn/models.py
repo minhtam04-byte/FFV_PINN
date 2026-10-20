@@ -5,8 +5,8 @@ from jax import jit, vmap
 
 from jaxpi.derivatives import hessian_diag_fwd, value_and_jacfwd
 from jaxpi.models import ForwardBVP
-from nc_porous.utils import sample_boundaries_natural_convection
-from nc_porous.numerical_pde import (
+from porous_pinn.boundary import sample_boundaries_natural_convection
+from porous_pinn.numerical_pde import (
     compute_pde_residuals_nd,
     compute_porous_and_buoyancy,
 )
