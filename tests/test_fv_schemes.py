@@ -28,7 +28,7 @@ PHYS = ml_collections.ConfigDict({
     "Pr": 1.0, "Ra": 1.0e3, "Da": 1.0e-2, "epsilon": 0.4, "F_eps": 0.5,
     "T_ref": 0.5, "lambda_k": 3.0, "porous_x_start": 0.4, "porous_x_end": 0.9,
 })
-FV_SCHEMES = ["ffv", "ffv_continuous", "can_ffv"]
+FV_SCHEMES = ["ffv", "ffv_continuous", "ffv_compact", "can_ffv"]
 RNG = np.random.default_rng(0)
 Y_PTS = RNG.uniform(0.2, 0.8, 16)
 # stencils (reach <= h <= 0.02) stay inside one region
@@ -121,11 +121,12 @@ FLUX_SCALE = abs(SLOPE_FLUID) / np.sqrt(PHYS.Pr * PHYS.Ra) / H  # size of one fa
 
 
 class TestInterfaceConservation:
-  def test_ffv_continuous_exact_at_any_interface_offset(self):
-    # stencil centres whose [x - h, x + h] straddles the interface at arbitrary offsets
-    x = jnp.asarray(RNG.uniform(X_I - 0.95 * H, X_I + 0.95 * H, 32))
+  @pytest.mark.parametrize("scheme,reach", [("ffv_continuous", 1.0), ("ffv_compact", 0.5)])
+  def test_exact_at_any_interface_offset(self, scheme, reach):
+    # stencil centres whose [x - reach*h, x + reach*h] straddles the interface at arbitrary offsets
+    x = jnp.asarray(RNG.uniform(X_I - 0.95 * reach * H, X_I + 0.95 * reach * H, 32))
     y = jnp.full_like(x, 0.5)
-    r_T = fv_residuals(FLUX_CONTINUOUS, x, y, H, "ffv_continuous")["T"]
+    r_T = fv_residuals(FLUX_CONTINUOUS, x, y, H, scheme)["T"]
     assert float(jnp.max(jnp.abs(r_T))) < 1e-10 * FLUX_SCALE
 
   def test_ffv_exact_when_interface_on_a_face(self):

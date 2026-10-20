@@ -22,7 +22,7 @@ from cases.fluid_porous_layer.config import aluminum, glass
 from cases.porous_cavity.config import base as cavity_base
 from porous_pinn.batching import create_batches
 
-SCHEMES_2D = ["ad", "ffv", "ffv_continuous", "can_ffv"]
+SCHEMES_2D = ["ad", "ffv", "ffv_continuous", "ffv_compact", "can_ffv"]
 SCHEMES_1D = ["ad", "ffv", "can"]
 CONFIGS_2D = [
     ("porous_cavity", "porous_cavity/base", cavity_base),
@@ -35,6 +35,7 @@ TRAIN_RUNS = [  # (case, name, config module, scheme, continuous mesh)
     ("fluid_porous_layer", "fluid_porous_layer/aluminum", aluminum, "ffv_continuous", True),
     ("fluid_porous_layer", "fluid_porous_layer/aluminum", aluminum, "ad", False),
     ("fluid_porous_layer", "fluid_porous_layer/glass", glass, "ffv", False),
+    ("fluid_porous_layer", "fluid_porous_layer/aluminum", aluminum, "ffv_compact", True),
 ]
 
 

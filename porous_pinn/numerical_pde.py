@@ -352,7 +352,128 @@ def compute_ffv_continuous_pde_residuals(
 
 
 # =============================================================================
-# 5. SƠ ĐỒ CAN-FFV 
+# 2C. SƠ ĐỒ FFV_COMPACT
+# Như ffv_continuous nhưng khuếch tán cũng tính từ giá trị tại mặt (cách P h/2):
+# stencil 5 điểm [P, e, w, n, s] chỉ vươn tới h/2, nên tâm ô kiểm soát lấy mẫu được
+# trong [h/2, L - h/2] và các ô kiểm soát phủ kín cả miền, kể cả sát vách.
+# =============================================================================
+def compute_ffv_compact_pde_residuals(neural_net_fn, params, x, y, h, physics_cfg):
+    """Sơ đồ FFV compact 2D 5 điểm [P, e, w, n, s] (derivative-free, bậc 2):
+    - Đối lưu, áp suất, lực cản và lực nổi giống hệt ffv_continuous.
+    - Thông lượng khuếch tán tại mặt: k_e * (phi_e - phi_P) / (h/2), với k_e là trung bình
+      điều hòa có trọng số khoảng cách trên [x, x + h/2] (chính xác cho nghiệm tuyến tính
+      từng khúc có thông lượng liên tục qua mặt phân cách).
+    - Với ô sát vách (tâm tại h/2), mặt w nằm trên vách nên thông lượng nhiệt tại vách
+      đi trực tiếp vào thặng dư.
+    """
+    dx = dy = h
+    half_h = 0.5 * h
+
+    # 1. Stencil 5 điểm: [P, e, w, n, s]
+    x_all = jnp.stack([x, x + half_h, x - half_h, x, x])
+    y_all = jnp.stack([y, y, y, y + half_h, y - half_h])
+
+    eval_fn = jax.vmap(neural_net_fn, in_axes=(None, 0, 0))
+    u_all, v_all, p_all, T_all = eval_fn(params, x_all, y_all)
+
+    u_P, u_e, u_w, u_n, u_s = u_all
+    v_P, v_e, v_w, v_n, v_s = v_all
+    p_P, p_e, p_w, p_n, p_s = p_all
+    T_P, T_e, T_w, T_n, T_s = T_all
+
+    # 2. Phương trình liên tục
+    div = (u_e - u_w) / dx + (v_n - v_s) / dy
+    rc = div
+
+    # 3. Tỷ lệ thể tích ô kiểm soát [x - h/2, x + h/2] nằm trong miền xốp (alpha_P)
+    eps_p = float(physics_cfg.get("epsilon", 0.4))
+    T_ref = float(physics_cfg.get("T_ref", 0.5))
+    Pr = float(physics_cfg.get("Pr", 6.44))
+    Ra = float(physics_cfg.get("Ra", 3.7e6))
+    visc_coeff = jnp.sqrt(Pr / Ra)
+
+    alpha_P = get_porous_segment_fraction(x - half_h, x + half_h, physics_cfg)
+    eps_cell_avg = alpha_P * eps_p + (1.0 - alpha_P) * 1.0
+    inv_eps_cell = 1.0 / jnp.maximum(eps_cell_avg, 1e-6)
+
+    # 4. Số hạng đối lưu bảo toàn tại mặt
+    inv_eps_e = 1.0 / get_eps_local(x + half_h, physics_cfg)
+    inv_eps_w = 1.0 / get_eps_local(x - half_h, physics_cfg)
+    inv_eps_n = inv_eps_cell
+    inv_eps_s = inv_eps_cell
+
+    conv_u = (
+        ((u_e**2) * inv_eps_e - (u_w**2) * inv_eps_w) / dx
+        + ((u_n * v_n) * inv_eps_n - (u_s * v_s) * inv_eps_s) / dy
+    )
+    conv_v = (
+        ((u_e * v_e) * inv_eps_e - (u_w * v_w) * inv_eps_w) / dx
+        + ((v_n**2) * inv_eps_n - (v_s**2) * inv_eps_s) / dy
+    )
+    conv_T = (
+        ((u_e * T_e) - (u_w * T_w)) / dx
+        + ((v_n * T_n) - (v_s * T_s)) / dy
+    )
+
+    # 5. Gradient áp suất từ các mặt kiểm soát
+    dp_dx = (p_e - p_w) / dx
+    dp_dy = (p_n - p_s) / dy
+
+    # 6. Khuếch tán động lượng từ giá trị tại mặt (khoảng cách h/2)
+    diff_u_oper = visc_coeff * (4.0 * u_P - u_e - u_w - u_n - u_s) / (half_h**2)
+    diff_v_oper = visc_coeff * (4.0 * v_P - v_e - v_w - v_n - v_s) / (half_h**2)
+
+    # 7. Khuếch tán nhiệt: harmonic mean có trọng số khoảng cách trên nửa ô [P, e] và [w, P]
+    k_e_exact = get_exact_harmonic_k(x, x + half_h, physics_cfg)
+    k_w_exact = get_exact_harmonic_k(x - half_h, x, physics_cfg)
+
+    k_fluid = 1.0 / jnp.sqrt(Pr * Ra)
+    lambda_k = float(physics_cfg.get("lambda_k", 1.0))
+    k_y_avg = (alpha_P * lambda_k + (1.0 - alpha_P)) * k_fluid
+
+    diff_T_oper = (
+        (k_e_exact * (T_P - T_e) + k_w_exact * (T_P - T_w)) / (half_h**2)
+        + k_y_avg * (2.0 * T_P - T_n - T_s) / (half_h**2)
+    )
+
+    # 8. Lực cản Darcy-Forchheimer & lực nổi: giống ffv_continuous
+    alpha_left = get_porous_segment_fraction(x - half_h, x, physics_cfg)
+    alpha_right = get_porous_segment_fraction(x, x + half_h, physics_cfg)
+
+    fu_pure_P, fv_pure_P = compute_pure_porous_drag(u_P, v_P, physics_cfg)
+    fu_pure_e, fv_pure_e = compute_pure_porous_drag(u_e, v_e, physics_cfg)
+    fu_pure_w, fv_pure_w = compute_pure_porous_drag(u_w, v_w, physics_cfg)
+    _, fv_pure_n = compute_pure_porous_drag(u_n, v_n, physics_cfg)
+    _, fv_pure_s = compute_pure_porous_drag(u_s, v_s, physics_cfg)
+
+    f_u_drag = (
+        0.5 * alpha_left * (0.5 * fu_pure_w + 0.5 * fu_pure_P)
+        + 0.5 * alpha_right * (0.5 * fu_pure_P + 0.5 * fu_pure_e)
+    )
+    fv_vert_corr = 0.125 * (fv_pure_n + fv_pure_s - 2.0 * fv_pure_P)
+    f_v_drag = (
+        0.5 * alpha_left * (0.5 * fv_pure_w + 0.5 * fv_pure_P + fv_vert_corr)
+        + 0.5 * alpha_right * (0.5 * fv_pure_P + 0.5 * fv_pure_e + fv_vert_corr)
+    )
+
+    eps_left = alpha_left * eps_p + (1.0 - alpha_left) * 1.0
+    eps_right = alpha_right * eps_p + (1.0 - alpha_right) * 1.0
+    T_vert_corr = 0.125 * (T_n + T_s - 2.0 * T_P)
+    f_buoyancy = (
+        0.5 * eps_left * (0.5 * (T_w + T_P) + T_vert_corr - T_ref)
+        + 0.5 * eps_right * (0.5 * (T_P + T_e) + T_vert_corr - T_ref)
+    )
+
+    # 9. Tổng hợp thặng dư PDE
+    ru = conv_u + dp_dx + diff_u_oper + f_u_drag
+    rv = conv_v + dp_dy + diff_v_oper + f_v_drag - f_buoyancy
+    rT = conv_T + diff_T_oper
+
+    return {"u": ru, "v": rv, "p": rc, "T": rT}
+
+
+# =============================================================================
+# 5. SƠ ĐỒ CAN-FFV
 # Phiên bản thử nghiệm từ FFV-PINN. Tân dụng cơ chế tính đạo hàm AD tại điểm bất kỳ 
 # của PINN dể có thể tính scheme bậc cao trong finite volume truyền thống.
 # =============================================================================
@@ -531,7 +652,9 @@ def compute_pde_residuals_nd(neural_net_fn, params, x, y, h, physics_cfg, scheme
         return compute_can_ffv_pde_residuals(neural_net_fn, params, x, y, h, physics_cfg)
     elif scheme_clean == "ffv_continuous":
         return compute_ffv_continuous_pde_residuals(neural_net_fn, params, x, y, h, physics_cfg)
+    elif scheme_clean == "ffv_compact":
+        return compute_ffv_compact_pde_residuals(neural_net_fn, params, x, y, h, physics_cfg)
     else:
         raise ValueError(
-            f"Invalid scheme: '{scheme}'. Please choose 'ffv', 'ffv_continuous', or 'can_ffv'."
+            f"Invalid scheme: '{scheme}'. Please choose 'ffv', 'ffv_continuous', 'ffv_compact', or 'can_ffv'."
         )

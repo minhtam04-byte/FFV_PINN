@@ -42,10 +42,15 @@ class HistoryEvaluator(BaseEvaluator):
 
 @partial(jit, static_argnums=(0, 2))
 def convection_fields(model, params, n):
-  """Stream function, wall Nusselt numbers and mass imbalance on an n x n grid.
+  """Stream function, Nusselt numbers and mass imbalance on an n x n grid.
 
   psi(x, y) = sqrt(Ra Pr) * int_0^y u dy' (velocity in units of alpha_f / L);
   psi(x, 1) must vanish, so max|psi(x, 1)| / psi_max measures mass imbalance.
+
+  The total heat flux through a vertical section,
+  Q(x) = int (sqrt(Ra Pr) u T - k dT/dx) dy, is the same for every x and equals
+  Nu at the walls. Nu_mid = Q(L/2) does not rely on the network's gradient at
+  the wall, which FV residuals constrain only indirectly.
   """
   phys = model.config.physics
   scale = jnp.sqrt(phys.Ra * phys.Pr)
@@ -59,16 +64,22 @@ def convection_fields(model, params, n):
 
   dT_dx = jax.grad(lambda xx, yy: model.neural_net(params, xx, yy)[3], argnums=0)
 
-  def nusselt(x_wall):
-    k_ratio = jnp.where(is_in_porous_zone(x_wall, phys), phys.get("lambda_k", 1.0), 1.0)
-    q = -k_ratio * vmap(dT_dx, (None, 0))(x_wall, y)
+  def total_heat_flux(x_line):
+    k_ratio = jnp.where(is_in_porous_zone(x_line, phys), phys.get("lambda_k", 1.0), 1.0)
+    def u_times_T(yy):
+      out = model.neural_net(params, x_line, yy)
+      return out[0] * out[3]
+
+    u_T = vmap(u_times_T)(y)
+    q = scale * u_T - k_ratio * vmap(dT_dx, (None, 0))(x_line, y)
     return jnp.trapezoid(q, y) / phys.H
 
   return {
       "psi_max": psi_max,
       "mass_imbalance": jnp.max(jnp.abs(psi[-1])) / psi_max,
-      "Nu_hot": nusselt(0.0),
-      "Nu_cold": nusselt(phys.L),
+      "Nu_hot": total_heat_flux(0.0),
+      "Nu_cold": total_heat_flux(phys.L),
+      "Nu_mid": total_heat_flux(0.5 * phys.L),
   }
 
 
@@ -82,6 +93,7 @@ class ConvectionEvaluator(HistoryEvaluator):
         "metric/psi_max": f["psi_max"],
         "metric/Nu_hot": f["Nu_hot"],
         "metric/Nu_cold": f["Nu_cold"],
+        "metric/Nu_mid": f["Nu_mid"],
         # Global conservation: both must be 0 for an exact solution
         "error/mass_imbalance": f["mass_imbalance"],
         "error/Nu_imbalance": jnp.abs(f["Nu_hot"] - f["Nu_cold"]) / nu_mean,

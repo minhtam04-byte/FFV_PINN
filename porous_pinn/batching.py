@@ -14,7 +14,7 @@ def create_batches(config):
     H, L = float(config.physics.H), float(config.physics.L)
     scheme = getattr(config.diff, "scheme", "ad").lower().strip()
 
-    if scheme in ["ffv", "can_ffv", "ffv_continuous"]:
+    if scheme in ["ffv", "can_ffv", "ffv_continuous", "ffv_compact"]:
         n_x = config.diff.n_x
         n_y = config.diff.n_y
 
@@ -27,13 +27,14 @@ def create_batches(config):
 
         config.diff.h_stencil = dx
 
-        # Cả can, ffv, ffv_continuous và can_ffv đều dùng tâm ô lân cận E, W, N, S -> reach = 1.0
-        if scheme in ["can", "ffv", "can_ffv", "ffv_continuous", "ffv_continous"]:
+        # ffv, ffv_continuous và can_ffv dùng tâm ô lân cận E, W, N, S -> reach = h;
+        # ffv_compact chỉ dùng các mặt e, w, n, s -> reach = h/2, phủ cả các ô sát vách
+        if scheme == "ffv_compact":
+            stencil_reach = 0.5
+            num_exclude = 0
+        else:
             stencil_reach = 1.0
             num_exclude = 1
-        else:  # "nd" (upwind bậc 2 vươn tới EE, WW, NN, SS)
-            stencil_reach = 2.0
-            num_exclude = 2
 
         use_continuous_mesh = getattr(config.diff, "use_continuous_mesh", False)
 
