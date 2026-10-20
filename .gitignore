@@ -13,3 +13,9 @@ core_codebase.txt
 
 # Reference papers (copyrighted; keep local only)
 references/
+
+# jaxpi documentation site: keep the .md guides, not the built assets
+docs/public/
+docs/node_modules/
+docs/.vitepress/cache/
+docs/.vitepress/dist/
