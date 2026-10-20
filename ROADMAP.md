@@ -30,6 +30,13 @@ Các việc nghiên cứu còn mở cho bài báo. Đánh dấu `[x]` khi xong, 
 
 ## B. Phương pháp số
 
+- [x] 2026-10-20: `ffv` bỏ nội suy áp suất kiểu CAN (cần ∂p/∂x, ∂p/∂y từ AD) và dùng `(p_e − p_w)/dx`, `(p_n − p_s)/dy`
+      như `ffv_continuous`; scheme giờ không còn dùng AD (33.6 ms/bước so với 52.7 trước đó). **Mọi run `ffv` trước ngày này
+      (kể cả `verify_cavity_ffv`, `verify_case2_ffv`) dùng áp suất CAN**, nên phải chạy lại trước khi đưa vào bài báo.
+- [ ] `ffv` và `ffv_continuous` vẫn khác nhau ở toán tử residual (trừ φ_P·div trong đối lưu; harmonic mean giả định mặt phân cách
+      ở giữa P–E so với có trọng số khoảng cách; drag/buoyancy giá trị điểm so với tích phân dưới ô; k theo phương y). Để tách
+      ảnh hưởng của cách lấy mẫu, so `ffv_continuous` với `use_continuous_mesh=False` và `True`.
+
 - [ ] **ffv_continuous phủ vùng sát vách.** Hiện tâm control volume (CV) được lấy mẫu trong [h, 1−h], nên dải [0, h/2]
       không thuộc CV nào. Đây lại là lớp biên nhiệt (δ ≈ Ra^(-1/4) ≈ 0.023 ≈ 2h). Đề xuất: tâm CV trong [h/2, 1−h/2];
       gần vách, thông lượng khuếch tán tại mặt tính bằng gradient AD tại chính điểm mặt (chỉ cần đạo hàm bậc 1) thay cho

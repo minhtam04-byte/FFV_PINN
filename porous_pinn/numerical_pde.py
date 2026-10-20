@@ -129,19 +129,14 @@ def compute_ffv_pde_residuals(neural_net_fn, params, x, y, h, physics_cfg):
     x_all = jnp.stack([x, x + half_h, x - half_h, x, x, x + dx, x - dx, x, x])
     y_all = jnp.stack([y, y, y, y + half_h, y - half_h, y, y, y + dy, y - dy])
 
-    val_and_grad_single = value_and_jacfwd(neural_net_fn, (1, 2))
-    eval_fn = jax.vmap(val_and_grad_single, in_axes=(None, 0, 0))
-
-    (u_all, v_all, p_all, T_all), (d_x_all, d_y_all) = eval_fn(params, x_all, y_all)
+    # Chỉ cần Forward Pass trên 9 điểm (không dùng đạo hàm AD)
+    eval_fn = jax.vmap(neural_net_fn, in_axes=(None, 0, 0))
+    u_all, v_all, p_all, T_all = eval_fn(params, x_all, y_all)
 
     u_P, u_e, u_w, u_n, u_s, u_E, u_W, u_N, u_S = u_all
     v_P, v_e, v_w, v_n, v_s, v_E, v_W, v_N, v_S = v_all
     p_P, p_e, p_w, p_n, p_s, p_E, p_W, p_N, p_S = p_all
     T_P, T_e, T_w, T_n, T_s, T_E, T_W, T_N, T_S = T_all
-
-    p_x_all, p_y_all = d_x_all[2], d_y_all[2]
-    p_x_P, p_x_E, p_x_W = p_x_all[0], p_x_all[5], p_x_all[6]
-    p_y_P, p_y_N, p_y_S = p_y_all[0], p_y_all[7], p_y_all[8]
 
     # 1. Phương trình liên tục
     div = (u_e - u_w) / dx + (v_n - v_s) / dy
@@ -170,14 +165,9 @@ def compute_ffv_pde_residuals(neural_net_fn, params, x, y, h, physics_cfg):
         - T_P * div
     )
 
-    # 3. Gradient áp suất CAN(cd) khử dao động răng cưa
-    p_e_can = 0.5 * (p_E + p_P) - (dx / 8.0) * (p_x_E - p_x_P)
-    p_w_can = 0.5 * (p_P + p_W) - (dx / 8.0) * (p_x_P - p_x_W)
-    p_n_can = 0.5 * (p_N + p_P) - (dy / 8.0) * (p_y_N - p_y_P)
-    p_s_can = 0.5 * (p_P + p_S) - (dy / 8.0) * (p_y_P - p_y_S)
-
-    dp_dx = (p_e_can - p_w_can) / dx
-    dp_dy = (p_n_can - p_s_can) / dy
+    # 3. Gradient áp suất trực tiếp từ các mặt kiểm soát e, w, n, s
+    dp_dx = (p_e - p_w) / dx
+    dp_dy = (p_n - p_s) / dy
 
     # 4. Khuếch tán động lượng (a_P > 0)
     _, visc_coeff, _, f_u_P, f_v_P, f_buoyancy = compute_porous_and_buoyancy(
