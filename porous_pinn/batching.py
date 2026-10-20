@@ -14,7 +14,7 @@ def create_batches(config):
     H, L = float(config.physics.H), float(config.physics.L)
     scheme = getattr(config.diff, "scheme", "ad").lower().strip()
 
-    if scheme in ["nd", "can", "ffv", "can_ffv", "ffv_continuous", "ffv_continous"]:
+    if scheme in ["ffv", "can_ffv", "ffv_continuous"]:
         n_x = config.diff.n_x
         n_y = config.diff.n_y
 
