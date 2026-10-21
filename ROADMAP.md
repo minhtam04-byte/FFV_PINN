@@ -73,9 +73,26 @@ Các việc nghiên cứu còn mở cho bài báo. Đánh dấu `[x]` khi xong, 
       - Số liệu thực nghiệm định lượng chỉ có cho glycerin (thí nghiệm 1–6, ô lớn, Ra = 9.52e5, Pr = 8356.2): profile nhiệt độ tại
         3 độ cao (Hình 2–4). Với cấu hình 2: thí nghiệm 3 (glass, R_k = 2.259) và 4 (Al, R_k = 17.10), Da = 2.248e-6 / 2.518e-6,
         C = 0.565 (ε = 0.380). Thí nghiệm 12/14 chỉ có ảnh giao thoa (định tính).
-- [ ] Run ε = 0.385 cho aluminum/glass (h = 1/80, 3 seed).
-- [ ] Biến thể mô hình "beckermann" (bỏ quán tính trong vùng xốp, μ_eff = μ) để so trực tiếp với 16.4 / 23.9 của cùng mô hình.
-- [ ] Kiểm chứng với thực nghiệm: config cho thí nghiệm 3 và 4 (glycerin), so profile T với Hình 3 (số hóa từ PDF).
+- [x] 2026-10-21: **Độ nhạy theo ε và theo dạng phương trình tại mặt phân cách** (aluminum, `ffv_compact`, h = 1/80, 3 seed,
+      lưới đánh giá 401²; hình: `outputs/fluid_porous_layer/figures/psi_max_interface_form_sensitivity.pdf`):
+
+      | trường hợp          | ψ_max          | so với LBM / Beck. | Nu_mid        | lỗi khối lượng % |
+      |---------------------|----------------|--------------------|---------------|------------------|
+      | gao, ε = 0.400      | 24.730 ± 0.040 | +6.5% / +3.5%      | 8.881 ± 0.062 | 0.68 ± 0.25      |
+      | gao, ε = 0.385      | 24.888 ± 0.046 | +7.2% / +4.1%      | 8.939 ± 0.065 | 0.77 ± 0.10      |
+      | hirata, ε = 0.385   | 21.043 ± 0.039 | −9.3% / −12.0%     | 7.310 ± 0.019 | 0.35 ± 0.07      |
+
+      ε 0.4 → 0.385: +0.6% (nhỏ, nhưng > 3σ). Dạng tại mặt phân cách (gao → hirata): **−15.5% ψ_max, −18% Nu**. Hai tham chiếu
+      (23.21, 23.9) nằm giữa hai dạng: sai lệch giữa các nghiên cứu nằm trong độ nhạy theo cách mô hình hóa mặt phân cách.
+- [ ] Quyết định dạng phương trình dùng làm kết quả chính của bài báo (gao để so với Gao 2017, hirata nhất quán với lý thuyết
+      trung bình thể tích) và cách trình bày độ nhạy này.
+- [ ] (Hạ ưu tiên) Biến thể "beckermann" (bỏ quán tính trong vùng xốp, μ_eff = μ): đo được quán tính và Brinkman dư chỉ
+      đáng kể trong lớp Brinkman tại mặt phân cách; biến thể hirata đã trả lời câu hỏi về độ nhạy theo điều kiện tại mặt phân cách.
+- [x] 2026-10-21: Số hóa Hình 3 của Beckermann (thí nghiệm 3 và 4, glycerin): `reference_data/beckermann1988_fig3.csv`;
+      config `exp3_glycerin_glass.py`, `exp4_glycerin_aluminum.py`; script `scripts/plot_beckermann_fig3.py`.
+- [ ] **Case glycerin chưa hội tụ** (thí nghiệm 3, 100k bước: loss ~6–8e-3, lỗi khối lượng 12–19%, profile T gợn sóng), nên so sánh
+      với Hình 3 chưa có kết luận (RMS Δθ ≈ 0.06–0.07). Pr = 8356: vận tốc thực ~ 1/√Pr theo thang rơi tự do và hệ số Darcy
+      ~1.6e4. Thử: thang vận tốc theo độ nhớt cho Pr ≫ 1, train lâu hơn / lịch PTS khác. Run thí nghiệm 4 đã bị bỏ qua.
 - [ ] **Ưu tiên cao nhất (sau kết quả hội tụ theo h):** lời giải tham chiếu hội tụ lưới (≥ 480²) cho *cùng hệ phương trình và
       tham số* bằng jax-dugks (`venv/src/jax-dugks`) hoặc FVM SIMPLE, để biết sai lệch ψ_max ≈ 24.70 so với 23.21 đến từ PINN
       hay từ khác biệt mô hình (ε, cách viết phương trình) so với Gao et al.
