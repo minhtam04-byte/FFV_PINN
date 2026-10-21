@@ -75,6 +75,22 @@ def get_porous_segment_fraction(x_a, x_b, physics_cfg):
     return jnp.clip(overlap / length, 0.0, 1.0)
 
 
+def get_porous_subsegment(x_a, x_b, physics_cfg):
+    """Đoạn con xốp của [x_a, x_b]: trả về (độ dài, trung điểm).
+
+    Trung điểm là điểm Gauss 1 điểm cho tích phân trên riêng phần xốp. Khi đoạn không có
+    phần xốp (độ dài 0), trả về trung điểm của [x_a, x_b] để mạng vẫn được đánh giá tại một
+    điểm hợp lệ trong miền; trọng số 0 làm điểm đó không đóng góp.
+    """
+    x_start = float(physics_cfg.get("porous_x_start", 0.0))
+    x_end = float(physics_cfg.get("porous_x_end", 1.0))
+    lo = jnp.maximum(x_a, x_start)
+    hi = jnp.minimum(x_b, x_end)
+    length = jnp.maximum(hi - lo, 0.0)
+    midpoint = jnp.where(length > 0.0, 0.5 * (lo + hi), 0.5 * (x_a + x_b))
+    return length, midpoint
+
+
 def get_exact_harmonic_k(x_a, x_b, physics_cfg):
     """Trung bình điều hòa tổng quát theo khoảng cách thực tế (Distance-Weighted Harmonic Mean):
     k_eff = 1 / ( theta / k_porous + (1 - theta) / k_fluid )
@@ -366,7 +382,9 @@ def compute_ffv_continuous_pde_residuals(
 # =============================================================================
 def compute_ffv_compact_pde_residuals(neural_net_fn, params, x, y, h, physics_cfg):
     """Sơ đồ FFV compact 2D 5 điểm [P, e, w, n, s] (derivative-free, bậc 2):
-    - Đối lưu, áp suất, lực cản và lực nổi giống hệt ffv_continuous.
+    - Đối lưu, áp suất và lực nổi giống hệt ffv_continuous.
+    - Lực cản Darcy-Forchheimer tích phân trên riêng phần xốp của mỗi nửa ô bằng Gauss 1 điểm
+      (thêm 2 lần đánh giá mạng), nên đạt bậc 2 cả trong ô cắt mặt phân cách.
     - Thông lượng khuếch tán tại mặt: k_e * (phi_e - phi_P) / (h/2), với k_e là trung bình
       điều hòa có trọng số khoảng cách trên [x, x + h/2] (chính xác cho nghiệm tuyến tính
       từng khúc có thông lượng liên tục qua mặt phân cách).
@@ -388,17 +406,20 @@ def compute_ffv_compact_pde_residuals(neural_net_fn, params, x, y, h, physics_cf
     if momentum_form not in ("gao", "hirata"):
         raise ValueError(f"physics.momentum_form='{momentum_form}' phải là 'gao' hoặc 'hirata'.")
 
-    # 1. Stencil 5 điểm: [P, e, w, n, s]
-    x_all = jnp.stack([x, x + half_h, x - half_h, x, x])
-    y_all = jnp.stack([y, y, y, y + half_h, y - half_h])
+    # 1. Stencil 5 điểm [P, e, w, n, s] + 2 điểm Gauss của lực cản: trung điểm phần xốp
+    #    của hai nửa ô [x - h/2, x] và [x, x + h/2]
+    len_l, xg_l = get_porous_subsegment(x - half_h, x, physics_cfg)
+    len_r, xg_r = get_porous_subsegment(x, x + half_h, physics_cfg)
+    x_all = jnp.stack([x, x + half_h, x - half_h, x, x, xg_l, xg_r])
+    y_all = jnp.stack([y, y, y, y + half_h, y - half_h, y, y])
 
     eval_fn = jax.vmap(neural_net_fn, in_axes=(None, 0, 0))
     u_all, v_all, p_all, T_all = eval_fn(params, x_all, y_all)
 
-    u_P, u_e, u_w, u_n, u_s = u_all
-    v_P, v_e, v_w, v_n, v_s = v_all
-    p_P, p_e, p_w, p_n, p_s = p_all
-    T_P, T_e, T_w, T_n, T_s = T_all
+    u_P, u_e, u_w, u_n, u_s, u_gl, u_gr = u_all
+    v_P, v_e, v_w, v_n, v_s, v_gl, v_gr = v_all
+    p_P, p_e, p_w, p_n, p_s = p_all[:5]
+    T_P, T_e, T_w, T_n, T_s = T_all[:5]
 
     # 2. Phương trình liên tục
     div = (u_e - u_w) / dx + (v_n - v_s) / dy
@@ -455,25 +476,17 @@ def compute_ffv_compact_pde_residuals(neural_net_fn, params, x, y, h, physics_cf
         + k_y_avg * (2.0 * T_P - T_n - T_s) / (half_h**2)
     )
 
-    # 8. Lực cản Darcy-Forchheimer & lực nổi: giống ffv_continuous
+    # 8. Lực cản Darcy-Forchheimer: trung bình ô = (1/h) * tích phân trên RIÊNG phần xốp,
+    #    Gauss 1 điểm trên mỗi đoạn con xốp (bậc 2, kể cả ô cắt mặt phân cách); theo phương y
+    #    dùng trung điểm y_P. Lực nổi: tích phân theo phần thể tích như ffv_continuous
+    #    (T liên tục qua mặt phân cách nên quy tắc này vẫn bậc 2).
     alpha_left = get_porous_segment_fraction(x - half_h, x, physics_cfg)
     alpha_right = get_porous_segment_fraction(x, x + half_h, physics_cfg)
 
-    fu_pure_P, fv_pure_P = compute_pure_porous_drag(u_P, v_P, physics_cfg)
-    fu_pure_e, fv_pure_e = compute_pure_porous_drag(u_e, v_e, physics_cfg)
-    fu_pure_w, fv_pure_w = compute_pure_porous_drag(u_w, v_w, physics_cfg)
-    _, fv_pure_n = compute_pure_porous_drag(u_n, v_n, physics_cfg)
-    _, fv_pure_s = compute_pure_porous_drag(u_s, v_s, physics_cfg)
-
-    f_u_drag = (
-        0.5 * alpha_left * (0.5 * fu_pure_w + 0.5 * fu_pure_P)
-        + 0.5 * alpha_right * (0.5 * fu_pure_P + 0.5 * fu_pure_e)
-    )
-    fv_vert_corr = 0.125 * (fv_pure_n + fv_pure_s - 2.0 * fv_pure_P)
-    f_v_drag = (
-        0.5 * alpha_left * (0.5 * fv_pure_w + 0.5 * fv_pure_P + fv_vert_corr)
-        + 0.5 * alpha_right * (0.5 * fv_pure_P + 0.5 * fv_pure_e + fv_vert_corr)
-    )
+    fu_gl, fv_gl = compute_pure_porous_drag(u_gl, v_gl, physics_cfg)
+    fu_gr, fv_gr = compute_pure_porous_drag(u_gr, v_gr, physics_cfg)
+    f_u_drag = (len_l * fu_gl + len_r * fu_gr) / dx
+    f_v_drag = (len_l * fv_gl + len_r * fv_gr) / dx
 
     eps_left = alpha_left * eps_p + (1.0 - alpha_left) * 1.0
     eps_right = alpha_right * eps_p + (1.0 - alpha_right) * 1.0

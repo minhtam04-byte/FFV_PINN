@@ -271,19 +271,32 @@ class TestDragCellAverage:
     ref = self.exact_drag(self.linear_v, x, h, phys)
     assert np.max(np.abs(got - ref)) < 1e-9 * np.max(np.abs(ref))
 
-  @pytest.mark.xfail(strict=True, reason=(
-      "Known limitation: in a cell cut by the interface the drag is (porous fraction) x "
-      "(mean of the end-point drags), and one end point lies in the fluid, so the cell "
-      "average is only first order. Fix: Gauss quadrature on the porous sub-segment."))
-  @pytest.mark.parametrize("scheme", ["ffv_continuous", "ffv_compact"])
+  def test_compact_exact_for_linear_velocity_in_cut_cells(self):
+    phys = self.PHYS_D
+    h = 0.02
+    x = jnp.asarray(X_I - np.linspace(-0.49, 0.49, 33) * h)
+    got = np.asarray(self.scheme_drag(self.linear_v, x, h, "ffv_compact", phys))
+    ref = self.exact_drag(self.linear_v, x, h, phys)
+    assert np.max(np.abs(got - ref)) < 1e-10 * np.max(np.abs(ref))
+
+  @pytest.mark.parametrize("scheme", [
+      pytest.param("ffv_continuous", marks=pytest.mark.xfail(strict=True, reason=(
+          "Known limitation, kept as the reference scheme: in a cut cell the drag is "
+          "(porous fraction) x (mean of the end-point drags) and one end point lies in the "
+          "fluid, so the cell average is first order. ffv_compact uses Gauss quadrature on "
+          "the porous sub-segment instead."))),
+      "ffv_compact",
+  ])
   def test_second_order_in_cut_cells(self, scheme):
+    # quadratic velocity, so that a second-order quadrature has a measurable error
+    quad_v = lambda x: 1.0 + 20.0 * (x - X_I) + 400.0 * (x - X_I)**2
     phys = self.PHYS_D
     offsets = np.linspace(-0.45, 0.45, 19)  # interface position inside the cell, in units of h
     errors = []
     for h in (0.02, 0.01, 0.005):
       x = jnp.asarray(X_I - offsets * h)
-      got = np.asarray(self.scheme_drag(self.linear_v, x, h, scheme, phys))
-      errors.append(np.max(np.abs(got - self.exact_drag(self.linear_v, x, h, phys))))
+      got = np.asarray(self.scheme_drag(quad_v, x, h, scheme, phys))
+      errors.append(np.max(np.abs(got - self.exact_drag(quad_v, x, h, phys))))
     orders = np.log2(np.array(errors[:-1]) / np.array(errors[1:]))
     assert np.all(orders > 1.8), f"observed orders {orders}, errors {errors}"
 

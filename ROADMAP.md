@@ -56,12 +56,15 @@ Các việc nghiên cứu còn mở cho bài báo. Đánh dấu `[x]` khi xong, 
       (`compute_ffv_pde_residuals` giả định mặt phân cách nằm giữa P và E).
 - [ ] `sol_net` dùng trọng số [0.5, 0.125×4] → φ_P + h²/32·∇²φ; trung bình ô đúng là [1/3, 1/6×4] (φ_P + h²/24·∇²φ).
 - [ ] Ablation PTS: tắt / τ = a_P cố định (≈ RC loss của FFV-PINN) / BB thích ứng.
-- [ ] **Lực cản Darcy–Forchheimer trong ô cắt mặt phân cách chỉ đạt bậc 1** (`ffv_continuous`, `ffv_compact`): công thức
+- [x] 2026-10-21 (`ffv_compact`; `ffv_continuous` giữ nguyên làm đối chứng): **Lực cản Darcy–Forchheimer trong ô cắt mặt phân cách chỉ đạt bậc 1**: công thức
       (phần trăm xốp) × (trung bình lực cản tại hai đầu nửa ô) dùng cả điểm nằm trong vùng lỏng. T1
       (`tests/test_fv_schemes.py::TestDragCellAverage`, xfail strict) đo được bậc 1.00. Với tham số aluminum, h = 1/80
       (δ_B/h ≈ 0.5), profile kiểu lớp Brinkman: sai số lực cản cục bộ 2–4% (Darcy), tổng lực cản trên các ô cắt bị ước lượng dư ~6%
       (đến ~14% nếu Forchheimer lớn, tức |v| ~ 1 tại mặt phân cách; trong run thật Forchheimer chỉ ~2% so với Darcy). Có lẽ không phải
       nguyên nhân chính của sai lệch ψ_max, nhưng nên sửa để sơ đồ nhất quán bậc 2: quy tắc Gauss trên riêng đoạn xốp của nửa ô.
+      Đo trên mạng nhôm đã train (h = 1/80): sai số trung bình mỗi ô cắt ~5.5% (gao) và ~13.5% (hirata); tổng lực cản trên các ô cắt
+      dư 5% (gao) và 13% (hirata). **Đã sửa trong `ffv_compact`:** Gauss 1 điểm tại trung điểm phần xốp của mỗi nửa ô (+2 lần đánh giá
+      mạng, bước train chậm hơn ~22%: 32.8 → 39.9 ms). Bậc ở ô cắt: 2.00 (vận tốc bậc hai), chính xác với vận tốc tuyến tính.
 - [ ] Docstring của `can_ffv` nói nội suy Hermite O(h⁴), nhưng `tests/test_fv_schemes.py` đo được bậc 2.00 cho toàn sơ đồ
       (div từ giá trị tại mặt chỉ đạt bậc 2). Sửa docstring, hoặc bỏ `can_ffv` nếu không đem lại lợi ích.
 
