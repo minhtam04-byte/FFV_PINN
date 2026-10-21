@@ -1,7 +1,7 @@
 """Streamlines and isotherms of trained fluid_porous_layer runs (Gao et al. 2017, Fig. 7 style).
 
   python scripts/plot_fields.py "label=run_suffix" [...] [--tag=name]
-run_suffix is the part after "fluid_porous_layer_aluminum_". Writes
+run_suffix is the part after "fluid_porous_layer_aluminum_" or a full run-directory name. Writes
 outputs/fluid_porous_layer/figures/fields{_tag}.{png,pdf}.
 """
 import json
@@ -30,12 +30,17 @@ N = 401
 
 
 def load(suffix):
-  run_dir = os.path.join(experiment.case_outputs_dir("fluid_porous_layer"), f"fluid_porous_layer_aluminum_{suffix}")
-  cfg = ml_collections.ConfigDict(json.load(open(os.path.join(run_dir, "run_info.json")))["config"])
+  """suffix after "fluid_porous_layer_aluminum_", or a full run-directory name (older runs)."""
+  root = experiment.case_outputs_dir("fluid_porous_layer")
+  name = f"fluid_porous_layer_aluminum_{suffix}"
+  if not os.path.isdir(os.path.join(root, name)) and os.path.isdir(os.path.join(root, suffix)):
+    name = suffix
+  cfg = ml_collections.ConfigDict(json.load(open(os.path.join(root, name, "run_info.json")))["config"])
   features = bool(cfg.get("model", {}).get("interface_features", False))
 
   def same_network(c):
     c.model.interface_features = features
+    c.wandb.name = name
     return c
 
   model, _, _ = experiment.load_run("fluid_porous_layer", suffix, aluminum, modify_config_fn=same_network)
@@ -57,7 +62,7 @@ def fields(model, cfg):
 def main():
   args = sys.argv[1:]
   tag = next((a.split("=", 1)[1] for a in args if a.startswith("--tag=")), "")
-  runs = [tuple(a.split("=", 1)) for a in args if not a.startswith("--tag=")]
+  runs = [tuple(a.rsplit("=", 1)) for a in args if not a.startswith("--tag=")]  # label may contain "="
   experiment.apply_runtime(aluminum.get_config())
   plt.rcParams.update({"font.family": "serif", "mathtext.fontset": "stix", "font.size": 9,
                        "axes.edgecolor": INK_2})
