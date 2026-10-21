@@ -2,6 +2,24 @@
 
 Các việc nghiên cứu còn mở cho bài báo. Đánh dấu `[x]` khi xong, ghi ngày và commit liên quan.
 
+## Trạng thái hiện tại (cập nhật 2026-10-21; chi tiết ở `notes/2026-10-21_session.md`)
+
+**Kết luận đang dùng**
+- Case nhôm (Gao 4.3, dạng gao, ε = 0.4): ψ_max = **24.70 ± 0.05**, hội tụ theo h (1/80 → 1/160, 3 seed, `ffv_compact`).
+  Mọi nguồn sai số phía PINN-FV đã kiểm tra (h, seed, precision, vùng sát vách, lực cản ô cắt, Gibbs/cusp, ε) đều < 1%.
+- Cách viết phương trình tại mặt phân cách (gao → hirata) làm ψ_max đổi **−15.5%**. LBM 23.21 và Beckermann 23.9 nằm giữa hai dạng
+  ⇒ khoảng cách 3–6% so với tài liệu là khác biệt mô hình/tham chiếu, không phải sai số của phương pháp.
+- AD không áp đặt điều kiện thông lượng tại mặt phân cách (Nu tại mặt cắt giữa gấp 4.7 lần Nu tại vách). Đây là luận điểm trung tâm của bài báo.
+- Run tốt nhất: `fluid_porous_layer_aluminum_cusp_seed0_n80` (`ffv_compact` + lực cản đã sửa + đặc trưng cusp).
+
+**Ưu tiên tiếp theo** (theo thứ tự đề xuất)
+1. Tham chiếu độc lập cho cùng hệ phương trình: jax-dugks (`venv/src/jax-dugks`) hoặc FVM SIMPLE.
+2. Chốt dạng gao hay hirata cho kết quả chính; thêm seed cho cusp và cho `ffv_continuous`.
+3. Làm giàu kiểu XFEM chỉ cho T (tránh chỗ gãy giả của v với dạng gao).
+4. Case glycerin (Pr = 8356) chưa hội tụ: thử thang vận tốc theo độ nhớt rồi so lại với Hình 3 Beckermann.
+5. Mục A còn mở (notebook, 7 siêu tham số trôi lệch glass/aluminum, README).
+6. Nhánh `restructure` chưa merge vào `main`: chỉ merge khi người dùng yêu cầu.
+
 ## Định hướng đã chốt
 
 - Không đề cập việc reproduce FFV-PINN. Trình bày là *xây dựng trên* sơ đồ FV rút gọn của Wei et al. (2025):

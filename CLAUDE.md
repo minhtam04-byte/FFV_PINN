@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Research code for a paper (`paper_outline.md`) on PINNs for conjugate natural convection in porous media, written in JAX/Flax. It combines finite-volume residuals (inspired by FFV-PINN, Wei et al. 2025) with adaptive pseudo-time stepping (PTS) from Wang et al. 2026, whose `jaxpi2` framework is vendored as `jaxpi/`. The authors' guides for that framework are in `docs/` (`guide/`, `methods/`). Benchmarks come from Gao et al. 2017 (IJHMT 105). The governing equations are in `README.md`, and reference PDFs are in `references/` (git-ignored).
 
-Open research tasks, known issues and the agreed paper framing are tracked in **`ROADMAP.md`**. Read it before starting work, and update it when an item is done.
+Open research tasks, known issues and the agreed paper framing are tracked in **`ROADMAP.md`** (current status and priorities at the top). Session handoff notes are in `notes/`; the latest is `notes/2026-10-21_session.md`, which holds the key results, the registry of valid and obsolete runs, and the figure index. Read ROADMAP and the latest note before starting work, and update ROADMAP when an item is done.
 
 ## Environment
 
@@ -17,6 +17,12 @@ Open research tasks, known issues and the agreed paper framing are tracked in **
 
 - Train: `python scripts/train.py --config=cases/<case>/config/<variant>.py --exp_name=<suffix> [--config.a.b=value ...]`. The case comes from the config path. Continue an interrupted run with `--config.training.resume=True`; without that flag, the script refuses to reuse an existing run directory.
 - Tests: `pytest` runs the fast suite (~30 s, CPU). `pytest -m slow` runs the training tests (~2 min). Run a single test with `pytest tests/test_fv_schemes.py::TestInterfaceConservation -q`.
+- Sweeps: `python scripts/sweep.py --config=... --prefix=<name> [--set KEY=V ...] [--grid KEYS=V1,V2 ...]` runs `train.py` subprocesses one after another. It skips finished runs (`history.pkl` present) and resumes partial ones, writing logs to `outputs/<case>/logs/`. It must not import JAX, which would preallocate 75% of the GPU memory in the parent process.
+- Analysis of `fluid_porous_layer` runs (figures go to `outputs/fluid_porous_layer/figures/`):
+  - `scripts/residual_maps.py [--tag=x] "label=run_suffix" ...` plots residual maps, residual-vs-x profiles, interface profiles and per-region RMS in a CSV. It evaluates each run with its own scheme, taken from git for runs trained before the drag fix.
+  - `scripts/plot_fields.py --tag=x "label=run_suffix" ...` plots streamlines and isotherms.
+  - `scripts/plot_beckermann_fig3.py` compares runs with the digitised Fig. 3 of Beckermann et al. (1988), stored in `reference_data/`.
+  - `run_suffix` is the part after `fluid_porous_layer_aluminum_`, or a full run-directory name.
 - After an **intended** numerical change, regenerate the golden file with `python tests/make_golden.py` and say so in the commit message. Otherwise `tests/test_regression.py` failing means numerics changed unintentionally.
 
 ## Architecture
@@ -28,9 +34,9 @@ Open research tasks, known issues and the agreed paper framing are tracked in **
   - Model methods use `@partial(jit, static_argnums=(0,))`, and `PINN.__hash__` is a process-unique id. Do not replace it.
   - PTS: τ = ‖Δresidual‖/‖Δsol_net‖ between `params` and `prev_params`, multiplied by a cosine shrink on the log₁₀ loss drop and clipped to [1e-2, 100].
 - `porous_pinn/` is the physics library for the 2D cases. It has no training orchestration.
-  - `numerical_pde.py`: porous coefficients and the FV schemes `ffv`, `ffv_continuous` and `can_ffv`. All three are derivative-free except `can_ffv`.
+  - `numerical_pde.py`: porous coefficients and the FV schemes `ffv`, `ffv_continuous`, `ffv_compact` and `can_ffv`. All are derivative-free except `can_ffv`. The module docstring states the governing equations and the references. `physics.momentum_form` (`"gao"` default, or `"hirata"`) is implemented only in `ffv_compact`.
   - `models.py`: `PorousNaturalConvection2D`, shared by both 2D cases. The fluid–porous–fluid case is just `porous_x_start/end` in its config. With `config.model.interface_features = True` (default off) the network input becomes (x, y, |x − x_start|, |x − x_end|), so it can represent gradient kinks at the interfaces; `cases.experiment.build_model` then initialises a 4-input network while `config.input_dim` stays 2. `config.arch` is passed verbatim to the Flax module, so new model options must not go there.
-  - `batching.py`: `create_batches` overwrites `diff.h_stencil = L / n_x`, keeps stencil centres one reach from the walls, and samples either fixed cell centres or random centres (`use_continuous_mesh`).
+  - `batching.py`: `create_batches` overwrites `diff.h_stencil = L / n_x`, keeps stencil centres one stencil reach from the walls (h, or h/2 for `ffv_compact`, so its control volumes cover the whole cavity), and samples either fixed cell centres or random centres (`use_continuous_mesh`).
   - `evaluators.py`: `HistoryEvaluator` (keeps every logged dict plus `loss/total`) and `ConvectionEvaluator` (ψ_max, wall Nu, `error/mass_imbalance`, `error/Nu_imbalance`, `error/*_vs_ref` from `config.reference`).
 - `cases/` holds the problem definitions and the runner.
   - `experiment.py` contains the `CASES` registry (case → model, batch builder, evaluator), `train_case(case, config)`, the notebook helpers `run_experiment(case, exp_name, org_config, modify_config_fn)` and `load_run(case, exp_name, org_config, step)`, and `apply_runtime`, which applies `config.jax_matmul_precision`.
@@ -46,10 +52,11 @@ Open research tasks, known issues and the agreed paper framing are tracked in **
 
 ### Schemes (`config.diff.scheme`)
 - `ad`: pointwise forward-mode AD. The energy equation uses `k·∇²T` piecewise, with no flux-continuity condition at the porous interface; `tests/test_fv_schemes.py` demonstrates this.
-- FV schemes are second order (verified by manufactured-solution tests). `ffv_continuous` is exact for a flux-continuous temperature at any interface offset; `ffv` is exact only when the interface lies on a cell face. `sol_net` returns a stencil-weighted cell average so that the PTS damping term matches the discrete residual.
+- `ffv_compact` (recommended; 5 points at h/2 plus 2 drag Gauss points) is second order in the bulk and in cut cells, including the drag. `ffv_continuous` has first-order drag in cut cells (a strict xfail in `TestDragCellAverage`).
+- FV schemes are second order in the bulk (verified by manufactured-solution tests). `ffv_continuous` is exact for a flux-continuous temperature at any interface offset; `ffv` is exact only when the interface lies on a cell face. `sol_net` returns a stencil-weighted cell average so that the PTS damping term matches the discrete residual.
 
 ## Conventions
 
-- Comments, docstrings and printed messages are mostly in Vietnamese; follow the surrounding file.
+- Docstrings are in English, Google style (summary, Args, Returns, Raises). Wherever they use a formula or a result from a paper, they cite it with equation or section numbers checked against `references/*.pdf`, and they mark sources that are not in `references/`. Inline comments and printed messages are mostly in Vietnamese; follow the surrounding file.
 - New experiments are new thin config variants or `--config.x=...` overrides, never copies of `base.py`.
 - Evaluate saved runs through `cases.experiment.load_run`, which applies the run's matmul precision. Evaluating the same checkpoint at TF32 instead of "highest" changes ψ_max by ~1%.
