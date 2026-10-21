@@ -28,6 +28,7 @@ def get_config():
     physics.F_eps = 0.554
     physics.lambda_k = 37.47    # Cập nhật alpha_m = 37.47 (Table 4)
     physics.T_ref = 0.5
+    physics.momentum_form = "gao"  # "gao" (Eq. 2 của Gao 2017) | "hirata" (dạng nhất quán tại mặt phân cách; chỉ ffv_compact)
     physics.porous_x_start = 1.0 / 3.0
     physics.porous_x_end = 2.0 / 3.0
 

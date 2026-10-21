@@ -93,6 +93,13 @@ def get_exact_harmonic_k(x_a, x_b, physics_cfg):
     return 1.0 / inv_k_eff
 
 
+def get_exact_harmonic_coeff(x_a, x_b, c_fluid, c_porous, physics_cfg):
+    """Trung bình điều hòa có trọng số khoảng cách của một hệ số khuếch tán bất kỳ
+    (c_fluid trong chất lưu, c_porous trong miền xốp) trên đoạn [x_a, x_b]."""
+    theta = get_porous_segment_fraction(x_a, x_b, physics_cfg)
+    return 1.0 / (theta / c_porous + (1.0 - theta) / c_fluid)
+
+
 def compute_pure_porous_drag(u, v, physics_cfg):
     """Tính cường độ lực cản Darcy-Forchheimer thuần túy (khi điểm nằm 100% trong miền xốp).
     Sau đó sẽ được nhân với tỷ lệ thể tích chiếm chỗ chính xác alpha_P của ô FVM.
@@ -365,9 +372,21 @@ def compute_ffv_compact_pde_residuals(neural_net_fn, params, x, y, h, physics_cf
       từng khúc có thông lượng liên tục qua mặt phân cách).
     - Với ô sát vách (tâm tại h/2), mặt w nằm trên vách nên thông lượng nhiệt tại vách
       đi trực tiếp vào thặng dư.
+
+    physics.momentum_form chọn cách viết phương trình động lượng một miền:
+    - "gao" (mặc định): đúng Eq. (2) của Gao et al. (2017), nhân với ε:
+        (1/ε)∇·(uu) + ∇p − ν∇²u + ε·(cản) − ε·(nổi) = 0, ν hằng số qua mặt phân cách
+        => tại mặt phân cách: ∂u_t/∂n liên tục và εP liên tục.
+    - "hirata": dạng chia cho ε, hệ số gián đoạn nằm trong divergence (Hirata et al. 2009):
+        (1/ε)∇·(uu/ε) + ∇P − ∇·((ν/ε)∇u) + (cản) − (nổi) = 0
+        => tại mặt phân cách: ν∂u_f/∂n = (ν/ε)∂u_m/∂n và P liên tục, tương đương mô hình
+        hai miền Darcy–Brinkman. Trong lòng mỗi miền, hai dạng cho cùng một vật lý.
     """
     dx = dy = h
     half_h = 0.5 * h
+    momentum_form = str(physics_cfg.get("momentum_form", "gao")).lower()
+    if momentum_form not in ("gao", "hirata"):
+        raise ValueError(f"physics.momentum_form='{momentum_form}' phải là 'gao' hoặc 'hirata'.")
 
     # 1. Stencil 5 điểm: [P, e, w, n, s]
     x_all = jnp.stack([x, x + half_h, x - half_h, x, x])
@@ -463,6 +482,31 @@ def compute_ffv_compact_pde_residuals(neural_net_fn, params, x, y, h, physics_cf
         0.5 * eps_left * (0.5 * (T_w + T_P) + T_vert_corr - T_ref)
         + 0.5 * eps_right * (0.5 * (T_P + T_e) + T_vert_corr - T_ref)
     )
+
+    if momentum_form == "hirata":
+        # Dạng Hirata (chia cho ε): quán tính nhân thêm 1/ε của ô; cản và lực nổi không có ε;
+        # nhớt hiệu dụng ν/ε trong miền xốp, trung bình điều hòa tại các mặt e, w
+        # (mặt n, s song song với mặt phân cách: trung bình số học theo phần thể tích).
+        conv_u = inv_eps_cell * conv_u
+        conv_v = inv_eps_cell * conv_v
+        f_u_drag = f_u_drag / eps_p
+        f_v_drag = f_v_drag / eps_p
+        f_buoyancy = (
+            0.5 * (0.5 * (T_w + T_P) + T_vert_corr - T_ref)
+            + 0.5 * (0.5 * (T_P + T_e) + T_vert_corr - T_ref)
+        )
+        visc_porous = visc_coeff / eps_p
+        mu_e = get_exact_harmonic_coeff(x, x + half_h, visc_coeff, visc_porous, physics_cfg)
+        mu_w = get_exact_harmonic_coeff(x - half_h, x, visc_coeff, visc_porous, physics_cfg)
+        mu_y = alpha_P * visc_porous + (1.0 - alpha_P) * visc_coeff
+        diff_u_oper = (
+            (mu_e * (u_P - u_e) + mu_w * (u_P - u_w)) / (half_h**2)
+            + mu_y * (2.0 * u_P - u_n - u_s) / (half_h**2)
+        )
+        diff_v_oper = (
+            (mu_e * (v_P - v_e) + mu_w * (v_P - v_w)) / (half_h**2)
+            + mu_y * (2.0 * v_P - v_n - v_s) / (half_h**2)
+        )
 
     # 9. Tổng hợp thặng dư PDE
     ru = conv_u + dp_dx + diff_u_oper + f_u_drag

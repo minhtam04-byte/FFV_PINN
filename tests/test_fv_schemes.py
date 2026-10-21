@@ -146,6 +146,69 @@ class TestInterfaceConservation:
     assert float(jnp.min(jnp.abs(r_fv))) > 0.1 * FLUX_SCALE
 
 
+class TestHirataMomentumForm:
+  """physics.momentum_form = "hirata": the same bulk physics divided by eps, with the
+  effective viscosity nu/eps inside the divergence (Hirata et al. 2009)."""
+
+  PHYS_H = ml_collections.ConfigDict({**PHYS.to_dict(), "momentum_form": "hirata"})
+
+  @staticmethod
+  def exact_hirata(fields, x, y, phys):
+    """Pointwise Hirata form = Gao's pointwise form divided by eps, with grad(P) not grad(p)/eps."""
+    f = lambda xx, yy: jnp.stack(fields(None, xx, yy))
+    q = f(x, y)
+    q_x, q_y = jax.jacfwd(f, 0)(x, y), jax.jacfwd(f, 1)(x, y)
+    lap = jax.jacfwd(jax.jacfwd(f, 0), 0)(x, y) + jax.jacfwd(jax.jacfwd(f, 1), 1)(x, y)
+    u, v, _, T = q
+    inv_eps, visc, diff_T, f_u, f_v, f_b = compute_porous_and_buoyancy(u, v, T, x, phys)
+    return {
+        "u": inv_eps**2 * (u * q_x[0] + v * q_y[0]) + q_x[2] - inv_eps * visc * lap[0] + inv_eps * f_u,
+        "v": inv_eps**2 * (u * q_x[1] + v * q_y[1]) + q_y[2] - inv_eps * visc * lap[1] + inv_eps * (f_v - f_b),
+        "p": q_x[0] + q_y[1],
+        "T": u * q_x[3] + v * q_y[3] - diff_T * lap[3],
+    }
+
+  @pytest.mark.parametrize("region", ["fluid", "porous"])
+  def test_second_order(self, region):
+    x, y = jnp.asarray(X_PTS[region]), jnp.asarray(Y_PTS)
+    exact = jax.vmap(lambda xx, yy: self.exact_hirata(smooth_fields, xx, yy, self.PHYS_H))(x, y)
+    errors = []
+    for h in (0.02, 0.01):
+      res = fv_residuals(smooth_fields, x, y, h, "ffv_compact", phys=self.PHYS_H)
+      errors.append({k: float(jnp.max(jnp.abs(res[k] - exact[k]))) for k in exact})
+    for k in exact:
+      order = np.log2(errors[0][k] / errors[1][k])
+      assert order > 1.8, f"hirata/{region}/{k}: observed order {order:.2f}"
+
+  def test_shear_stress_jump_at_interface(self):
+    # Tangential velocity v(x), piecewise linear across the vertical interface, no flow
+    # through it (u = 0), no drag/buoyancy. Shear-stress continuity with nu_eff = nu/eps
+    # (Hirata Eq. 15) requires v'_porous = eps * v'_fluid.
+    phys = ml_collections.ConfigDict({**PHYS.to_dict(), "Da": 1e14, "F_eps": 0.0})
+    slope_f = 1.0
+
+    def shear_fields(slope_m):
+      def fields(params, x, y):
+        del params
+        v = jnp.where(x < X_I, slope_f * (x - X_I), slope_m * (x - X_I))
+        zero = 0.0 * x
+        return zero, v + 0.0 * y, zero, phys.T_ref + zero
+      return fields
+
+    x = jnp.asarray(RNG.uniform(X_I - 0.45 * H, X_I + 0.45 * H, 32))
+    y = jnp.full_like(x, 0.5)
+    scale = np.sqrt(phys.Pr / phys.Ra) / H  # size of one viscous face flux
+    hirata = ml_collections.ConfigDict({**phys.to_dict(), "momentum_form": "hirata"})
+    stress_jump = shear_fields(phys.epsilon * slope_f)    # Hirata interface condition
+    gradient_cont = shear_fields(slope_f)                  # Gao-form interface condition
+    r = lambda fields, cfg: fv_residuals(fields, x, y, H, "ffv_compact", phys=cfg)["v"]
+    assert float(jnp.max(jnp.abs(r(stress_jump, hirata)))) < 1e-10 * scale
+    assert float(jnp.max(jnp.abs(r(gradient_cont, phys)))) < 1e-10 * scale
+    # each form rejects the other's interface condition
+    assert float(jnp.min(jnp.abs(r(gradient_cont, hirata)))) > 0.01 * scale
+    assert float(jnp.min(jnp.abs(r(stress_jump, phys)))) > 0.01 * scale
+
+
 class TestConduction1D:
   """1D vertex-centred schemes: the analytical two-layer solution is a discrete solution."""
 

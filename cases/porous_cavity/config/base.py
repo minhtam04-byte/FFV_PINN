@@ -27,6 +27,7 @@ def get_config():
     physics.epsilon = 0.999  # Độ rỗng môi trường xốp
     physics.F_eps = 0.1  # Hệ số cản Forchheimer phi tuyến
     physics.T_ref = 0.5  # Nhiệt độ tham chiếu (Boussinesq)
+    physics.momentum_form = "gao"  # "gao" (Eq. 2 của Gao 2017) | "hirata" (dạng nhất quán tại mặt phân cách; chỉ ffv_compact)
     physics.lambda_k = 1.0
 
     # =========================================================================

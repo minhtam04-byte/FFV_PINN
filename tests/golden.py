@@ -73,6 +73,15 @@ def compute_golden(include_training=True):
       _flatten(f"A/{name}/{scheme}/res", m.r_pred_fn(p, b2[:, 0], b2[:, 1]), out)
       _flatten(f"A/{name}/{scheme}/sol", m.sol_pred_fn(p, b2[:, 0], b2[:, 1]), out)
       _flatten(f"A/{name}/{scheme}/loss", m.losses(p, m.state, b2), out)
+  # ffv_compact with the Hirata momentum form (interface-consistent one-domain formulation)
+  cfg = copy.deepcopy(aluminum.get_config())
+  cfg.diff.scheme = "ffv_compact"
+  cfg.physics.momentum_form = "hirata"
+  create_batches(cfg)
+  m = experiment.build_model("fluid_porous_layer", cfg)
+  _flatten("A/fluid_porous_layer/aluminum/ffv_compact_hirata/res", m.r_pred_fn(m.state.params, b2[:, 0], b2[:, 1]), out)
+  _flatten("A/fluid_porous_layer/aluminum/ffv_compact_hirata/loss", m.losses(m.state.params, m.state, b2), out)
+
   for scheme in SCHEMES_1D:
     cfg = copy.deepcopy(conduction_base.get_config())
     cfg.diff.scheme = scheme

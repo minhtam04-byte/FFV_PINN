@@ -58,6 +58,11 @@ class PorousNaturalConvection2D(ForwardBVP):
 
     def r_net(self, params, x, y):
         scheme = self.config.diff.get("scheme", "ad").lower().strip()
+        momentum_form = str(self.config.physics.get("momentum_form", "gao")).lower()
+        if momentum_form != "gao" and scheme != "ffv_compact":
+            raise ValueError(
+                f"physics.momentum_form='{momentum_form}' chỉ được cài cho diff.scheme='ffv_compact'."
+            )
         if scheme == "ad":
             (u, v, p, T), (d_x, d_y) = value_and_jacfwd(self.neural_net, (1, 2))(
                 params, x, y
