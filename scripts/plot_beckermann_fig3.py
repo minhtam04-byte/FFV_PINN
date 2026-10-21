@@ -72,9 +72,12 @@ def main():
             ha="center", va="bottom", color=INK_2, fontsize=8)
     for label, exp_name, ls in RUNS:
       try:
-        model, _, _ = experiment.load_run("fluid_porous_layer", exp_name, cfg_mod)
+        model, history, _ = experiment.load_run("fluid_porous_layer", exp_name, cfg_mod)
       except FileNotFoundError:
         print(f"[skip] experiment {exp_id}: run '{exp_name}' not found")
+        continue
+      if not history:  # history.pkl is written only when training ends
+        print(f"[skip] experiment {exp_id}: run '{exp_name}' is still training")
         continue
       for h, (marker, color) in HEIGHTS.items():
         ax.plot(xi_line, temperature(model, xi_line, np.full_like(xi_line, h)),
