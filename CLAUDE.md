@@ -29,7 +29,7 @@ Open research tasks, known issues and the agreed paper framing are tracked in **
   - PTS: τ = ‖Δresidual‖/‖Δsol_net‖ between `params` and `prev_params`, multiplied by a cosine shrink on the log₁₀ loss drop and clipped to [1e-2, 100].
 - `porous_pinn/` is the physics library for the 2D cases. It has no training orchestration.
   - `numerical_pde.py`: porous coefficients and the FV schemes `ffv`, `ffv_continuous` and `can_ffv`. All three are derivative-free except `can_ffv`.
-  - `models.py`: `PorousNaturalConvection2D`, shared by both 2D cases. The fluid–porous–fluid case is just `porous_x_start/end` in its config.
+  - `models.py`: `PorousNaturalConvection2D`, shared by both 2D cases. The fluid–porous–fluid case is just `porous_x_start/end` in its config. With `config.model.interface_features = True` (default off) the network input becomes (x, y, |x − x_start|, |x − x_end|), so it can represent gradient kinks at the interfaces; `cases.experiment.build_model` then initialises a 4-input network while `config.input_dim` stays 2. `config.arch` is passed verbatim to the Flax module, so new model options must not go there.
   - `batching.py`: `create_batches` overwrites `diff.h_stencil = L / n_x`, keeps stencil centres one reach from the walls, and samples either fixed cell centres or random centres (`use_continuous_mesh`).
   - `evaluators.py`: `HistoryEvaluator` (keeps every logged dict plus `loss/total`) and `ConvectionEvaluator` (ψ_max, wall Nu, `error/mass_imbalance`, `error/Nu_imbalance`, `error/*_vs_ref` from `config.reference`).
 - `cases/` holds the problem definitions and the runner.
