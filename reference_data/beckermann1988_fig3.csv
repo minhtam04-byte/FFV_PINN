@@ -1,0 +1,56 @@
+# Beckermann, Viskanta & Ramadhyani (1988), J. Fluid Mech. 186, Fig. 3: measured temperature
+# profiles, configuration 2 (central porous layer, s/L = 0.33), large test cell, glycerin.
+# experiment 3 = 6.0 mm glass beads (Fig. 3a), experiment 4 = 6.35 mm aluminium beads (Fig. 3b).
+# Digitized from the scanned PDF (600 dpi): marker centres by hole detection, axes from the
+# frame via a 4-corner homography; check: axis ticks map to within 0.002 of 0.2/0.4/0.6/0.8.
+# Estimated digitizing uncertainty ~0.003 in xi and theta. Paper: probe position +-0.5 mm.
+# xi = x/L (hot wall at xi = 0), theta = (T - Tc)/(Th - Tc), y_over_L = measurement height.
+experiment,y_over_L,xi,theta,shape,fill_ratio,hole_area_px
+3,0.912,0.0284,0.9665,square,0.83,537
+3,0.912,0.1380,0.9358,square,0.90,540
+3,0.912,0.3081,0.8323,square,0.96,555
+3,0.912,0.4077,0.7080,square,0.86,581
+3,0.912,0.5786,0.5791,square,0.96,555
+3,0.912,0.6888,0.4654,square,0.94,589
+3,0.912,0.8498,0.3835,square,0.94,589
+3,0.912,0.9709,0.2147,square,0.88,596
+3,0.554,0.0280,0.9335,triangle,0.59,314
+3,0.554,0.1389,0.8407,triangle,0.61,323
+3,0.554,0.3076,0.7632,triangle,0.63,361
+3,0.554,0.4097,0.6185,triangle,0.66,319
+3,0.554,0.5771,0.4726,triangle,0.68,329
+3,0.554,0.6895,0.3182,triangle,0.68,329
+3,0.554,0.8499,0.2100,triangle,0.62,325
+3,0.554,0.9722,0.0979,triangle,0.63,333
+3,0.204,0.0275,0.8817,circle,0.70,631
+3,0.204,0.1394,0.7423,circle,0.75,605
+3,0.204,0.3074,0.6589,circle,0.75,632
+3,0.204,0.4081,0.5267,circle,0.76,635
+3,0.204,0.5780,0.3696,circle,0.75,630
+3,0.204,0.6893,0.1972,circle,0.71,641
+3,0.204,0.8502,0.1154,circle,0.77,643
+3,0.204,0.9707,0.0429,circle,0.75,626
+4,0.912,0.0329,0.9638,square,0.86,516
+4,0.912,0.1508,0.9079,square,0.97,556
+4,0.912,0.3118,0.7764,square,0.80,582
+4,0.912,0.4111,0.6339,square,0.91,565
+4,0.912,0.5823,0.5870,square,0.96,554
+4,0.912,0.6940,0.5405,square,0.90,611
+4,0.912,0.8527,0.4801,square,0.95,593
+4,0.912,0.9732,0.2258,square,0.84,585
+4,0.554,0.0324,0.9489,triangle,0.81,213
+4,0.554,0.1408,0.7915,triangle,0.66,379
+4,0.554,0.3102,0.6759,triangle,0.59,314
+4,0.554,0.4117,0.5715,triangle,0.68,330
+4,0.554,0.5821,0.5221,triangle,0.62,330
+4,0.554,0.6910,0.4207,triangle,0.59,335
+4,0.554,0.8516,0.3008,triangle,0.68,327
+4,0.554,0.9710,0.1314,triangle,0.62,344
+4,0.204,0.0305,0.8225,circle,0.79,620
+4,0.204,0.1411,0.6832,circle,0.75,629
+4,0.204,0.3094,0.5555,circle,0.75,629
+4,0.204,0.4109,0.4622,circle,0.77,647
+4,0.204,0.5824,0.4137,circle,0.74,624
+4,0.204,0.6911,0.2898,circle,0.77,620
+4,0.204,0.8511,0.1912,circle,0.76,594
+4,0.204,0.9704,0.0627,circle,0.80,603
