@@ -62,9 +62,24 @@ Các việc nghiên cứu còn mở cho bài báo. Đánh dấu `[x]` khi xong, 
 ## C. Kiểm chứng cho bài báo
 
 - [ ] Lấy ε của case 4.3 từ Beckermann et al. (1988, JFM 186); hiện giả định 0.4. Phân tích độ nhạy ψ_max theo ε.
-- [ ] Lời giải tham chiếu hội tụ lưới (≥ 480²) bằng jax-dugks (`venv/src/jax-dugks`) hoặc FVM SIMPLE.
+- [ ] **Ưu tiên cao nhất (sau kết quả hội tụ theo h):** lời giải tham chiếu hội tụ lưới (≥ 480²) cho *cùng hệ phương trình và
+      tham số* bằng jax-dugks (`venv/src/jax-dugks`) hoặc FVM SIMPLE, để biết sai lệch ψ_max ≈ 24.70 so với 23.21 đến từ PINN
+      hay từ khác biệt mô hình (ε, cách viết phương trình) so với Gao et al.
 - [ ] FVM cổ điển với cùng sơ đồ, cùng h: FFV-PINN(h) − FVM(h) = sai số tối ưu; FVM(h) − tham chiếu = sai số rời rạc.
-- [ ] Hội tụ theo h ∈ {1/40, 1/60, 1/80, 1/120, 1/160}, bậc hội tụ quan sát được.
+- [x] 2026-10-21: Hội tụ theo h (aluminum, `ffv_compact`, CV ngẫu nhiên, 100k bước, 3 seed; `scripts/sweep.py --prefix=hconv`;
+      đánh giá trên lưới 401², precision "highest"):
+
+      | h     | ψ_max (mean ± std) | so với LBM / Beck. | lỗi khối lượng % | Nu_mid        | \|Nu nóng − lạnh\| % |
+      |-------|--------------------|--------------------|------------------|---------------|----------------------|
+      | 1/40  | 25.018 ± 0.073     | +7.8% / +4.7%      | 1.53 ± 0.07      | 9.042 ± 0.083 | 1.80 ± 1.94          |
+      | 1/60  | 24.772 ± 0.096     | +6.7% / +3.6%      | 0.99 ± 0.24      | 8.966 ± 0.037 | 1.87 ± 1.06          |
+      | 1/80  | 24.730 ± 0.040     | +6.5% / +3.5%      | 0.68 ± 0.25      | 8.881 ± 0.062 | 0.56 ± 0.45          |
+      | 1/120 | 24.666 ± 0.063     | +6.3% / +3.2%      | 0.43 ± 0.12      | 8.870 ± 0.039 | 0.51 ± 0.10          |
+      | 1/160 | 24.707 ± 0.037     | +6.4% / +3.4%      | 0.38 ± 0.16      | 8.833 ± 0.016 | 0.18 ± 0.20          |
+
+      **ψ_max hội tụ từ h ≤ 1/80 về ≈ 24.70 ± 0.05**, tức sai lệch +6.4% so với LBM là hệ thống (≫ dao động giữa các seed,
+      ~0.3%) và **không do rời rạc hóa**. Nu_mid vẫn giảm nhẹ theo h (≈ 8.83 ở 1/160); lỗi bảo toàn giảm đơn điệu theo h.
+      Loss cuối tăng khi h nhỏ (1.3e-5 → 3.8e-5): tối ưu khó hơn với stencil hẹp.
 - [ ] Mọi số liệu chính: mean ± std trên ≥ 5 seed (`scripts/train.py --config.seed=...`).
 - [ ] Lưới cố định đã căn mặt phân cách vs ffv_continuous ở cùng h, cùng PTS.
 - [ ] Đo trên toàn trường: L2 của u, v, T; Nu trung bình; profile v(x), T(x) tại y = 0.5; so với LBM và Beckermann.
