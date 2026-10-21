@@ -209,6 +209,85 @@ class TestHirataMomentumForm:
     assert float(jnp.min(jnp.abs(r(stress_jump, phys)))) > 0.01 * scale
 
 
+class TestDragCellAverage:
+  """Darcy-Forchheimer drag averaged over a control volume cut by the interface.
+
+  The drag the scheme applies is isolated as rv(Da) - rv(Da -> inf, F = 0) for a
+  tangential velocity v(x) (u = p = 0, T = T_ref): every other term is unchanged.
+  The exact value is the cell average of X_p * c * (nu/Da + F/sqrt(Da)|v|) v over
+  the porous part of [x - h/2, x + h/2] (c = eps for the Gao form, 1 for Hirata).
+  """
+
+  PHYS_D = ml_collections.ConfigDict({**PHYS.to_dict(), "Da": 1e-3, "F_eps": 0.0})
+
+  @staticmethod
+  def velocity_fields(v_of_x, phys):
+    def fields(params, x, y):
+      del params
+      zero = 0.0 * x
+      return zero, v_of_x(x) + 0.0 * y, zero, phys.T_ref + zero
+    return fields
+
+  @staticmethod
+  def scheme_drag(v_of_x, x, h, scheme, phys):
+    fields = TestDragCellAverage.velocity_fields(v_of_x, phys)
+    no_drag = ml_collections.ConfigDict({**phys.to_dict(), "Da": 1e14, "F_eps": 0.0})
+    y = jnp.full_like(x, 0.5)
+    return (fv_residuals(fields, x, y, h, scheme, phys=phys)["v"]
+            - fv_residuals(fields, x, y, h, scheme, phys=no_drag)["v"])
+
+  @staticmethod
+  def exact_drag(v_of_x, x, h, phys, n_gauss=24):
+    """(1/h) * integral over the porous part of the cell (Gauss-Legendre, exact for these profiles)."""
+    c = phys.epsilon if phys.get("momentum_form", "gao") == "gao" else 1.0
+    nu = np.sqrt(phys.Pr / phys.Ra)
+    g, w = np.polynomial.legendre.leggauss(n_gauss)
+    out = []
+    for xc in np.asarray(x):
+      a, b = max(xc - h / 2, phys.porous_x_start), min(xc + h / 2, phys.porous_x_end)
+      if b <= a:
+        out.append(0.0)
+        continue
+      s = 0.5 * (b - a) * g + 0.5 * (a + b)
+      v = np.asarray(v_of_x(jnp.asarray(s)))
+      speed = np.sqrt(v**2 + 1e-6)  # same regularisation as compute_pure_porous_drag
+      dens = c * (nu / phys.Da + phys.F_eps / np.sqrt(phys.Da) * speed) * v
+      out.append(0.5 * (b - a) * np.dot(w, dens) / h)
+    return np.array(out)
+
+  @staticmethod
+  def linear_v(x):
+    return 1.0 + 20.0 * (x - X_I)
+
+  @pytest.mark.parametrize("form", ["gao", "hirata"])
+  @pytest.mark.parametrize("scheme", ["ffv_continuous", "ffv_compact"])
+  def test_exact_inside_porous_layer(self, scheme, form):
+    phys = ml_collections.ConfigDict({**self.PHYS_D.to_dict(), "momentum_form": form})
+    if form == "hirata" and scheme != "ffv_compact":
+      pytest.skip("Hirata form is implemented for ffv_compact only")
+    h = 0.02
+    x = jnp.asarray(X_I + h * RNG.uniform(1.0, 3.0, 16))  # cells fully inside the porous layer
+    got = np.asarray(self.scheme_drag(self.linear_v, x, h, scheme, phys))
+    ref = self.exact_drag(self.linear_v, x, h, phys)
+    assert np.max(np.abs(got - ref)) < 1e-9 * np.max(np.abs(ref))
+
+  @pytest.mark.xfail(strict=True, reason=(
+      "Known limitation: in a cell cut by the interface the drag is (porous fraction) x "
+      "(mean of the end-point drags), and one end point lies in the fluid, so the cell "
+      "average is only first order. Fix: Gauss quadrature on the porous sub-segment."))
+  @pytest.mark.parametrize("scheme", ["ffv_continuous", "ffv_compact"])
+  def test_second_order_in_cut_cells(self, scheme):
+    phys = self.PHYS_D
+    offsets = np.linspace(-0.45, 0.45, 19)  # interface position inside the cell, in units of h
+    errors = []
+    for h in (0.02, 0.01, 0.005):
+      x = jnp.asarray(X_I - offsets * h)
+      got = np.asarray(self.scheme_drag(self.linear_v, x, h, scheme, phys))
+      errors.append(np.max(np.abs(got - self.exact_drag(self.linear_v, x, h, phys))))
+    orders = np.log2(np.array(errors[:-1]) / np.array(errors[1:]))
+    assert np.all(orders > 1.8), f"observed orders {orders}, errors {errors}"
+
+
 class TestConduction1D:
   """1D vertex-centred schemes: the analytical two-layer solution is a discrete solution."""
 
