@@ -61,7 +61,21 @@ Các việc nghiên cứu còn mở cho bài báo. Đánh dấu `[x]` khi xong, 
 
 ## C. Kiểm chứng cho bài báo
 
-- [ ] Lấy ε của case 4.3 từ Beckermann et al. (1988, JFM 186); hiện giả định 0.4. Phân tích độ nhạy ψ_max theo ε.
+- [x] 2026-10-21: **Đọc Beckermann et al. (1988), `references/JFM1988.pdf`.** Case 4.3 = thí nghiệm 12 (glass) và 14 (Al), cấu hình 2.
+      - Cột cuối Bảng 1 là hệ số quán tính Ergun C = 0.554 (Gao gọi là Fe), **không phải độ rỗng**. Suy ε từ Eq. (9)–(10):
+        C = 1.75 / (√175 · ε^1.5) ⇒ **ε = 0.385** (kiểm chứng: Eq. (9) cho lại Da = 1.368e-5 / 1.533e-5, khớp Bảng 1 trong 0.2%).
+        Config đang dùng ε = 0.4.
+      - **ψ_max 16.4 / 23.9 là kết quả số của Beckermann** (SIMPLER, lưới **26×26** dãn về phía vách; 50×50 "không cải thiện
+        đáng kể"), không phải số đo. Gao viết "same grid 120 × 120 as Ref. [11]" là sai.
+      - **Mô hình khác Gao/của ta.** Eq. (14) của Beckermann: trong vùng xốp *không có* số hạng quán tính (u·∇)u, Brinkman với
+        μ_eff = μ, không có ε. Gao (và code này), sau khi chia cho ε: quán tính (1/ε²)(u·∇)u, Brinkman (1/ε)ν∇²u. Darcy, Forchheimer,
+        buoyancy, năng lượng thì như nhau. Lớp Brinkman tại mặt phân cách: √Da = 0.0039 (Beckermann) so với √(Da/ε) = 0.0062 (ta).
+      - Số liệu thực nghiệm định lượng chỉ có cho glycerin (thí nghiệm 1–6, ô lớn, Ra = 9.52e5, Pr = 8356.2): profile nhiệt độ tại
+        3 độ cao (Hình 2–4). Với cấu hình 2: thí nghiệm 3 (glass, R_k = 2.259) và 4 (Al, R_k = 17.10), Da = 2.248e-6 / 2.518e-6,
+        C = 0.565 (ε = 0.380). Thí nghiệm 12/14 chỉ có ảnh giao thoa (định tính).
+- [ ] Run ε = 0.385 cho aluminum/glass (h = 1/80, 3 seed).
+- [ ] Biến thể mô hình "beckermann" (bỏ quán tính trong vùng xốp, μ_eff = μ) để so trực tiếp với 16.4 / 23.9 của cùng mô hình.
+- [ ] Kiểm chứng với thực nghiệm: config cho thí nghiệm 3 và 4 (glycerin), so profile T với Hình 3 (số hóa từ PDF).
 - [ ] **Ưu tiên cao nhất (sau kết quả hội tụ theo h):** lời giải tham chiếu hội tụ lưới (≥ 480²) cho *cùng hệ phương trình và
       tham số* bằng jax-dugks (`venv/src/jax-dugks`) hoặc FVM SIMPLE, để biết sai lệch ψ_max ≈ 24.70 so với 23.21 đến từ PINN
       hay từ khác biệt mô hình (ε, cách viết phương trình) so với Gao et al.
