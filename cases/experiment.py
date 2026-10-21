@@ -47,26 +47,52 @@ CASES = {
 
 
 def _load(spec):
+  """Import "package.module:attribute" and return the attribute."""
   module, attr = spec.split(":")
   return getattr(importlib.import_module(module), attr)
 
 
 def case_outputs_dir(case):
+  """Default output directory of a case: outputs/<case>."""
   return os.path.join(OUTPUTS_ROOT, case)
 
 
 def run_dir(config):
+  """Directory of a run: <config.saving.ckpt_path>/<config.wandb.name>."""
   return os.path.dirname(get_ckpt_path(config))
 
 
 def apply_runtime(config):
-  """Process-wide JAX settings recorded in the config."""
+  """Apply the process-wide JAX settings recorded in the config.
+
+  Currently only config.jax_matmul_precision. Call it before training and before
+  evaluating a reloaded checkpoint: with TF32 matmuls the same checkpoint gives psi_max
+  values about 1% apart.
+
+  Args:
+      config: run config.
+  """
   precision = config.get("jax_matmul_precision", None)
   if precision is not None:
     jax.config.update("jax_default_matmul_precision", precision)
 
 
 def build_model(case, config, params=None):
+  """Instantiate the model of a case.
+
+  The default path is jaxpi.models.create_model. If the model declares a wider network
+  input than config.input_dim (network_input_dim, e.g. interface features), the train
+  state is created from a copy of the config with that input width. The model itself
+  keeps config.input_dim as the number of coordinates, which the vmapped predictors use.
+
+  Args:
+      case: key of CASES.
+      config: run config.
+      params: optional initial parameters (warm start).
+
+  Returns:
+      The model, with its train state.
+  """
   apply_runtime(config)
   model_cls = _load(CASES[case][0])
   width = (model_cls.network_input_dim(config) if hasattr(model_cls, "network_input_dim")
@@ -85,11 +111,20 @@ def build_model(case, config, params=None):
 
 
 def stop_on_nonfinite(step, log_dict):
-  """Early stop when any logged loss is NaN/inf."""
+  """Early-stopping rule for jaxpi.training.train: stop when a logged loss is NaN or inf.
+
+  Args:
+      step: training step (unused).
+      log_dict: logged values; only the "loss/" keys are checked.
+
+  Returns:
+      True to stop training.
+  """
   return any(not math.isfinite(float(v)) for k, v in log_dict.items() if k.startswith("loss/"))
 
 
 def _git(*args):
+  """Output of `git <args>` in the repository, or None if git fails."""
   try:
     return subprocess.run(["git", *args], cwd=REPO_ROOT, capture_output=True,
                           text=True, check=True).stdout.strip()
@@ -98,6 +133,11 @@ def _git(*args):
 
 
 def _save_run_info(config, case):
+  """Write run_info.json (case, command line, git commit and dirty flag, full config).
+
+  This makes every run reproducible and lets analysis scripts rebuild the exact network
+  and scheme a run was trained with.
+  """
   path = run_dir(config)
   os.makedirs(path, exist_ok=True)
   info = {
@@ -112,7 +152,10 @@ def _save_run_info(config, case):
 
 
 def _pretrained_params(case, config):
-  """Warm start from training.pretrained_ckpt_dir (fresh optimizer state)."""
+  """Parameters for a warm start from config.training.pretrained_ckpt_dir, or None.
+
+  Only the parameters are reused; the optimizer state starts fresh.
+  """
   ckpt_dir = config.training.get("pretrained_ckpt_dir", None)
   if not ckpt_dir:
     return None
@@ -122,11 +165,20 @@ def _pretrained_params(case, config):
 
 
 def train_case(case, config, stop_fn=stop_on_nonfinite):
-  """Train one run; returns (model, history).
+  """Train one run with jaxpi.training.train.
 
-  config.saving.ckpt_path defaults to outputs/<case>. With
-  config.training.resume the run continues from its latest checkpoint and its
-  history.pkl is extended.
+  config.saving.ckpt_path defaults to outputs/<case>. The evaluator history is written
+  to <run_dir>/history.pkl when training ends; its presence marks a finished run
+  (scripts/sweep.py). With config.training.resume the run continues from its latest
+  checkpoint and the new history is appended to the existing history.pkl.
+
+  Args:
+      case: key of CASES.
+      config: run config; modified in place (ckpt_path, diff.h_stencil).
+      stop_fn: early-stopping rule (step, log_dict) -> bool.
+
+  Returns:
+      Tuple (model, history).
   """
   if config.saving.get("ckpt_path", None) is None:
     config.saving.ckpt_path = case_outputs_dir(case)
@@ -152,7 +204,17 @@ def train_case(case, config, stop_fn=stop_on_nonfinite):
 
 
 def run_experiment(case, exp_name, org_config, modify_config_fn=None):
-  """Notebook helper: org_config.get_config(), suffix the run name, apply modify_config_fn, train."""
+  """Notebook helper: train a variant of a config module.
+
+  Args:
+      case: key of CASES.
+      exp_name: suffix appended to config.wandb.name; names the run directory.
+      org_config: config module with get_config().
+      modify_config_fn: optional callable config -> config applied before training.
+
+  Returns:
+      Tuple (model, history) from train_case.
+  """
   config = copy.deepcopy(org_config.get_config())
   config.wandb.name = f"{config.wandb.name}_{exp_name}"
   if modify_config_fn is not None:
@@ -161,10 +223,26 @@ def run_experiment(case, exp_name, org_config, modify_config_fn=None):
 
 
 def load_run(case, exp_name, org_config, step=None, modify_config_fn=None):
-  """Rebuild the model of a run and restore its checkpoint; returns (model, history, config).
+  """Rebuild the model of a finished or partial run and restore its checkpoint.
 
-  The architecture must match the run, so pass the same modify_config_fn if
-  it changed the network.
+  The network architecture must match the run's. Pass the same modify_config_fn if it
+  changed the network, e.g. model.interface_features; scripts/plot_fields.py reads this
+  from run_info.json.
+
+  Args:
+      case: key of CASES.
+      exp_name: run-name suffix, as in run_experiment.
+      org_config: config module with get_config().
+      step: checkpoint step to restore; None restores the latest.
+      modify_config_fn: optional callable config -> config.
+
+  Returns:
+      Tuple (model, history, config); history is {} if history.pkl does not exist
+      (the run is still training or was interrupted).
+
+  Raises:
+      FileNotFoundError: if the run has no checkpoint. This is checked before Orbax is
+          called, because Orbax would create an empty run directory.
   """
   config = org_config.get_config()
   config.wandb.name = f"{config.wandb.name}_{exp_name}"

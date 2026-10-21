@@ -55,7 +55,18 @@ SERIES = [("#2a78d6", "-"), ("#eb6834", "--"), ("#1baf7a", "-."), ("#eda100", ":
 
 
 def scheme_module(run_dir):
-  """numerical_pde as it was when the run was trained."""
+  """porous_pinn.numerical_pde as it was when the run was trained.
+
+  Runs trained before DRAG_FIX_COMMIT are evaluated with the source of their own commit
+  (read with `git show` and executed in a fresh module), so the plotted residual is
+  the one the network was trained to minimise.
+
+  Args:
+      run_dir: run directory containing run_info.json.
+
+  Returns:
+      Tuple (module, run_info dict).
+  """
   info = json.load(open(os.path.join(run_dir, "run_info.json")))
   commit = info.get("git_commit")
   is_old = subprocess.run(["git", "merge-base", "--is-ancestor", DRAG_FIX_COMMIT, commit],
@@ -70,6 +81,14 @@ def scheme_module(run_dir):
 
 
 def load(suffix):
+  """Reload a run with the network it was trained with.
+
+  Args:
+      suffix: run-directory name after "fluid_porous_layer_aluminum_".
+
+  Returns:
+      Tuple (model, config from run_info.json, scheme module, run_info dict).
+  """
   run_name = f"fluid_porous_layer_aluminum_{suffix}"
   run_dir = os.path.join(experiment.case_outputs_dir("fluid_porous_layer"), run_name)
   module, info = scheme_module(run_dir)
@@ -85,6 +104,14 @@ def load(suffix):
 
 
 def residual_field(model, cfg, module):
+  """FV residuals of the run's own scheme on an N_GRID x N_GRID grid of control-volume centres.
+
+  Centres span [h/2, 1 - h/2] so every control volume lies inside the cavity; for the
+  schemes with reach h the outermost row is therefore outside their training region.
+
+  Returns:
+      Tuple (X, Y, {"u", "v", "p", "T": residual arrays}, h).
+  """
   h = float(cfg.diff.h_stencil)
   c = np.linspace(0.5 * h, 1.0 - 0.5 * h, N_GRID)  # every CV fully inside the cavity
   X, Y = np.meshgrid(c, c)
@@ -101,6 +128,11 @@ def residual_field(model, cfg, module):
 
 
 def regions(X, Y, h, phys):
+  """Masks of the regions over which the residual RMS is reported.
+
+  The interface band is |x - x_i| < h. Near walls means within 2h of a wall, outside the
+  band. Fluid bulk and porous bulk are the rest of each region.
+  """
   xi = (phys.porous_x_start, phys.porous_x_end)
   d_int = np.minimum(np.abs(X - xi[0]), np.abs(X - xi[1]))
   d_wall = np.minimum.reduce([X, 1 - X, Y, 1 - Y])
@@ -112,6 +144,7 @@ def regions(X, Y, h, phys):
 
 
 def main():
+  """Plot residual maps, x-profiles of the residual RMS and interface profiles; write the CSV."""
   global RUNS
   args = sys.argv[1:]
   tag = next((a.split("=", 1)[1] for a in args if a.startswith("--tag=")), "")

@@ -39,6 +39,7 @@ def load(suffix):
   features = bool(cfg.get("model", {}).get("interface_features", False))
 
   def same_network(c):
+    """Match the run's network input (interface features) and run name."""
     c.model.interface_features = features
     c.wandb.name = name
     return c
@@ -48,6 +49,12 @@ def load(suffix):
 
 
 def fields(model, cfg):
+  """Network fields on an N x N grid: (X, Y, psi, T).
+
+  psi is the stream function in units of alpha_f (as in porous_pinn.evaluators.
+  convection_fields), obtained by integrating u upwards from the bottom wall with the
+  trapezoidal rule.
+  """
   x = np.linspace(0, 1, N)
   X, Y = np.meshgrid(x, x)
   out = jax.jit(jax.vmap(lambda a, b: jnp.stack(model.neural_net(model.state.params, a, b))))(
@@ -60,6 +67,10 @@ def fields(model, cfg):
 
 
 def main():
+  """One column per run: streamlines (30 equal increments of psi) and isotherms (step 1/16).
+
+  The layout follows Gao et al. (2017), Fig. 7 (references/lbm_ref.pdf).
+  """
   args = sys.argv[1:]
   tag = next((a.split("=", 1)[1] for a in args if a.startswith("--tag=")), "")
   runs = [tuple(a.rsplit("=", 1)) for a in args if not a.startswith("--tag=")]  # label may contain "="

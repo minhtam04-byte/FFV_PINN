@@ -11,11 +11,40 @@ from jaxpi.samplers import MeshSampler, UniformSampler
 
 
 def _sampler_key(config):
-    """Khóa ngẫu nhiên của sampler; mặc định 1234 như jaxpi.samplers."""
+    """PRNG key of the collocation sampler: config.training.sampler_seed (default 1234).
+
+    The default equals the key that jaxpi.samplers uses when none is given, so old configs
+    reproduce the old batches.
+    """
     return jax.random.PRNGKey(config.training.get("sampler_seed", 1234))
 
 
 def create_batches(config):
+    """Collocation-point iterator for the 2-D cases.
+
+    AD scheme: uniform random points in [0, L] x [0, H].
+
+    FV schemes: control-volume centres. h = L / n_x is written to config.diff.h_stencil and
+    the grid must be square (n_x / L == n_y / H). The centres keep a distance
+    stencil_reach * h from the walls: reach h for "ffv", "ffv_continuous" and "can_ffv"
+    (their stencils use the neighbouring centres), and h/2 for "ffv_compact" (faces only),
+    so with "ffv_compact" the control volumes cover the whole cavity.
+        diff.use_continuous_mesh = True: uniform random centres in the admissible region
+            (randomly placed control volumes).
+        False: centres of the uniform n_x x n_y grid of cells, without the excluded rows.
+            If they fit in one batch, every batch is the whole grid, trimmed to a multiple of
+            the device count; otherwise MeshSampler draws batch_size of them.
+
+    Args:
+        config: run config. Modified in place (config.diff.h_stencil).
+
+    Returns:
+        Iterator of (batch_size, 2) arrays. With training.random_sampling = False, the
+        first batch is repeated.
+
+    Raises:
+        ValueError: for an unknown diff.scheme.
+    """
     H, L = float(config.physics.H), float(config.physics.L)
     scheme = getattr(config.diff, "scheme", "ad").lower().strip()
 

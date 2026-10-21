@@ -8,14 +8,31 @@ from jaxpi.samplers import MeshSampler, UniformSampler
 
 
 def _sampler_key(config):
-    """Khóa ngẫu nhiên của sampler; mặc định 1234 như jaxpi.samplers."""
+    """PRNG key of the collocation sampler: config.training.sampler_seed (default 1234,
+    the jaxpi.samplers default).
+    """
     return jax.random.PRNGKey(config.training.get("sampler_seed", 1234))
 
 
 def create_batches_1d(config):
-    """
-    Bộ sinh batch điểm nội miền cho bài toán 1 chiều.
-    Tự động tính toán khoảng đệm biên (safety buffer) phụ thuộc vào stencil_reach của sơ đồ số.
+    """Collocation-point iterator for the 1-D case.
+
+    AD scheme: uniform random points in [0, L].
+
+    FV schemes: cell centres on the uniform grid of n_x nodes, with spacing
+    h = L / (n_x - 1) written to config.diff.h_stencil. Centres keep the distance
+    stencil_reach * h from both ends (one node for "ffv" and "can"). They are drawn at random
+    (diff.use_continuous_mesh) or from the grid by MeshSampler.
+
+    Args:
+        config: run config; modified in place (config.diff.h_stencil).
+
+    Returns:
+        Iterator of (batch_size, 1) arrays; with training.random_sampling = False the first
+        batch is repeated.
+
+    Raises:
+        ValueError: for an unknown diff.scheme.
     """
     L = config.physics.L
     scheme = getattr(config.diff, "scheme", "ad").lower().strip()

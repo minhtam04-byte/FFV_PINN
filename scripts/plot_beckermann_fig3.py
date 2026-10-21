@@ -40,6 +40,12 @@ INK, INK_2, GRID = "#0b0b0b", "#52514e", "#e4e3df"
 
 
 def load_data():
+  """Read the digitised Fig. 3 of Beckermann et al. (1988) (references/JFM1988.pdf).
+
+  Returns:
+      {experiment: {y/L: (n, 2) array of (xi, theta) sorted by xi}}, for experiments 3
+      and 4 (glycerin; glass and aluminium beads).
+  """
   rows = [r for r in csv.reader(open(DATA)) if r and not r[0].startswith("#")]
   header, rows = rows[0], rows[1:]
   data = {}
@@ -51,11 +57,17 @@ def load_data():
 
 
 def temperature(model, x, y):
+  """Network temperature T at the points (x, y)."""
   f = jax.jit(jax.vmap(lambda xx, yy: model.neural_net(model.state.params, xx, yy)[3]))
   return np.asarray(f(np.asarray(x, float), np.asarray(y, float)))
 
 
 def main():
+  """Overlay model temperature profiles on the measured ones; write the figure and error CSV.
+
+  Runs without history.pkl are still training and are skipped, since their checkpoint is
+  not final.
+  """
   data = load_data()
   os.makedirs(FIG_DIR, exist_ok=True)
   plt.rcParams.update({"font.family": "serif", "mathtext.fontset": "stix", "font.size": 10,

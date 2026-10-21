@@ -39,6 +39,12 @@ flags.mark_flags_as_required(["config", "exp_name"])
 
 
 def _case_from_config_path(path):
+  """Case name from a config path cases/<case>/config/<file>.py.
+
+  Raises:
+      ValueError: if the path is not under cases/ or the case is not in
+          cases.experiment.CASES.
+  """
   parts = os.path.normpath(os.path.abspath(path)).split(os.sep)
   if "cases" not in parts:
     raise ValueError(f"Config must live under cases/<case>/config/: {path}")
@@ -49,6 +55,7 @@ def _case_from_config_path(path):
 
 
 def main(argv):
+  """Name the run, refuse to overwrite an existing run directory unless resuming, and train."""
   del argv
   config = _CONFIG.value
   case = _case_from_config_path(config_flags.get_config_filename(flags.FLAGS["config"]))

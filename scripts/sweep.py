@@ -26,6 +26,7 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def parse_grid(spec):
+  """"k1,k2=v1,v2,v3" -> (["k1", "k2"], ["v1", "v2", "v3"]); all keys take the same value."""
   keys, values = spec.split("=", 1)
   return keys.split(","), values.split(",")
 
@@ -50,6 +51,12 @@ def short_name(keys):
 
 
 def main():
+  """Run every combination of the --grid values as a separate scripts/train.py subprocess.
+
+  Runs are sequential, so each training process has the whole GPU. Finished runs
+  (history.pkl present) are skipped, and interrupted ones are resumed with
+  --config.training.resume=True.
+  """
   parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
   parser.add_argument("--config", required=True)
   parser.add_argument("--prefix", required=True)
