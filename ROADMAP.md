@@ -73,6 +73,18 @@ Các việc nghiên cứu còn mở cho bài báo. Đánh dấu `[x]` khi xong, 
 
 ## C. Kiểm chứng cho bài báo
 
+- [x] 2026-10-21: **Bản đồ residual và profile qua mặt phân cách** (`scripts/residual_maps.py`; 4 run aluminum `ffv_compact`):
+      - Residual FV của chính mỗi run tập trung ở dải mặt phân cách: RMS lớn hơn lòng miền ~5–6× (động lượng x) đến ~10–40×
+        (năng lượng); đỉnh phụ sát vách. Trong lòng miền residual trơn, gợn sóng bước sóng ~0.05–0.1, không có dao động theo lưới.
+      - u, v, p, T trơn qua mặt phân cách (T gãy đúng vật lý). **∂T/∂x dao động giả phía chất lỏng** trong dải ~0.01 sát mặt phân
+        cách (3–10 cực trị, bước sóng < h). Độ rộng dải **không co lại theo h** (≈0.010–0.0125 với h = 1/80, 0.009 với h = 1/160)
+        ⇒ giới hạn biểu diễn của mạng trơn (Fourier features) quanh chỗ gãy, không phải sai số rời rạc FV.
+      - ψ_max, Nu không bị ảnh hưởng rõ (hội tụ theo h, ổn định theo seed), nhưng dao động là nguồn residual lớn nhất.
+      - Run h = 1/160: nhiễu lấm tấm trong vùng xốp ở bản đồ năng lượng: nghi do triệt tiêu float32 trong hiệu (T_P − T_e)/(h/2)²
+        khi h nhỏ (λ = 37 khuếch đại); có thể giải thích loss cuối tăng khi h giảm.
+- [ ] Thử đặc trưng đầu vào biết vị trí mặt phân cách (|x − x_start|, |x − x_end|) để mạng biểu diễn được chỗ gãy của T và vận tốc;
+      so ψ_max, residual dải mặt phân cách và dao động ∂T/∂x với baseline.
+
 - [x] 2026-10-21: **Đọc Beckermann et al. (1988), `references/JFM1988.pdf`.** Case 4.3 = thí nghiệm 12 (glass) và 14 (Al), cấu hình 2.
       - Cột cuối Bảng 1 là hệ số quán tính Ergun C = 0.554 (Gao gọi là Fe), **không phải độ rỗng**. Suy ε từ Eq. (9)–(10):
         C = 1.75 / (√175 · ε^1.5) ⇒ **ε = 0.385** (kiểm chứng: Eq. (9) cho lại Da = 1.368e-5 / 1.533e-5, khớp Bảng 1 trong 0.2%).
