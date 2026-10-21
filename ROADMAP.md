@@ -65,6 +65,9 @@ Các việc nghiên cứu còn mở cho bài báo. Đánh dấu `[x]` khi xong, 
       Đo trên mạng nhôm đã train (h = 1/80): sai số trung bình mỗi ô cắt ~5.5% (gao) và ~13.5% (hirata); tổng lực cản trên các ô cắt
       dư 5% (gao) và 13% (hirata). **Đã sửa trong `ffv_compact`:** Gauss 1 điểm tại trung điểm phần xốp của mỗi nửa ô (+2 lần đánh giá
       mạng, bước train chậm hơn ~22%: 32.8 → 39.9 ms). Bậc ở ô cắt: 2.00 (vận tốc bậc hai), chính xác với vận tốc tuyến tính.
+      Run kiểm chứng (aluminum, gao, ε = 0.4, h = 1/80, seed 0; `dragfix_seed0_n80` so với `hconv_seed0_n80`): ψ_max 24.698 → 24.771
+      (+0.3%, cỡ dao động giữa các seed ±0.04), Nu_mid 8.898 → 8.937, lỗi khối lượng 0.97% → 0.66%. Thời gian run 33 → 46 phút.
+      Kết luận: với dạng gao, sai số lực cản ở ô cắt không ảnh hưởng đáng kể tới ψ_max. Chưa kiểm cho dạng hirata (lực cản dư 13%).
 - [ ] Docstring của `can_ffv` nói nội suy Hermite O(h⁴), nhưng `tests/test_fv_schemes.py` đo được bậc 2.00 cho toàn sơ đồ
       (div từ giá trị tại mặt chỉ đạt bậc 2). Sửa docstring, hoặc bỏ `can_ffv` nếu không đem lại lợi ích.
 
