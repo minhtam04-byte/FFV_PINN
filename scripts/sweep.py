@@ -30,6 +30,19 @@ def parse_grid(spec):
   return keys.split(","), values.split(",")
 
 
+def case_from_config_path(path):
+  """cases/<case>/config/<file>.py -> <case>.
+
+  Deliberately does not import scripts.train or anything that imports JAX: this
+  process lives for the whole sweep, and JAX would preallocate ~75% of the GPU
+  memory here, leaving the training subprocesses only the remainder.
+  """
+  parts = os.path.normpath(os.path.abspath(path)).split(os.sep)
+  if "cases" not in parts or not os.path.isdir(os.path.join(REPO_ROOT, "cases", parts[parts.index("cases") + 1], "config")):
+    raise ValueError(f"Config must live under cases/<case>/config/: {path}")
+  return parts[parts.index("cases") + 1]
+
+
 def short_name(keys):
   """'seed,training.sampler_seed' -> 'seed'; 'diff.n_x,diff.n_y' -> 'n'."""
   last = keys[0].split(".")[-1]
@@ -46,8 +59,7 @@ def main():
   args = parser.parse_args()
 
   sys.path.insert(0, REPO_ROOT)
-  from scripts.train import _case_from_config_path
-  case = _case_from_config_path(args.config)
+  case = case_from_config_path(args.config)
   case_dir = os.path.join(REPO_ROOT, "outputs", case)
   log_dir = os.path.join(case_dir, "logs")
   os.makedirs(log_dir, exist_ok=True)
