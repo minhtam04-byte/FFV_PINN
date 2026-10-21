@@ -82,9 +82,16 @@ Các việc nghiên cứu còn mở cho bài báo. Đánh dấu `[x]` khi xong, 
       - ψ_max, Nu không bị ảnh hưởng rõ (hội tụ theo h, ổn định theo seed), nhưng dao động là nguồn residual lớn nhất.
       - Run h = 1/160: nhiễu lấm tấm trong vùng xốp ở bản đồ năng lượng: nghi do triệt tiêu float32 trong hiệu (T_P − T_e)/(h/2)²
         khi h nhỏ (λ = 37 khuếch đại); có thể giải thích loss cuối tăng khi h giảm.
-- [ ] Thử đặc trưng đầu vào biết vị trí mặt phân cách (|x − x_start|, |x − x_end|) để mạng biểu diễn được chỗ gãy của T và vận tốc;
+- [x] 2026-10-21: Thử đặc trưng đầu vào biết vị trí mặt phân cách (|x − x_start|, |x − x_end|) để mạng biểu diễn được chỗ gãy của T và vận tốc;
       so ψ_max, residual dải mặt phân cách và dao động ∂T/∂x với baseline. Đã cài: `config.model.interface_features` (mặc định tắt;
       golden 414/414 giống từng bit khi tắt). Test fit chỗ gãy: sai số gần mặt phân cách 8.6e-3 → 1.5e-3. Run: `cusp_seed0_n80`.
+      **Kết quả** (`cusp_seed0_n80` so với `dragfix_seed0_n80`, gao, ε = 0.4, h = 1/80, seed 0; hình `*_cusp.pdf`):
+      dao động ∂T/∂x biến mất (cực trị 10 → 0); residual năng lượng dải mặt phân cách 1.9e-2 → 2.5e-3 (8×), lòng miền 3×;
+      động lượng x dải mặt phân cách 2×; loss 2.2e-5 → 1.5e-5; Nu nóng/giữa/lạnh lệch 2.0% → 0.6%; **ψ_max 24.771 → 24.683 (−0.4%,
+      cỡ dao động seed)** ⇒ dao động Gibbs không làm sai ψ_max. Tác dụng phụ: residual động lượng y dải mặt phân cách 2× (7.2e-3 →
+      1.4e-2), ∂v/∂x có bước nhảy giả 3.1% (dạng gao đòi ∂v/∂x liên tục) vì đặc trưng cho phép mọi đầu ra gãy.
+- [ ] Làm giàu chỉ cho biến cần gãy (kiểu XFEM): T = N_T(x, y) + |x − x_s|·a(x, y) + |x − x_e|·b(x, y), với N_T, a, b là đầu ra trơn của
+      mạng không có đặc trưng; u, v, p trơn (dạng gao). Với dạng hirata thêm cùng cấu trúc cho v (∂v/∂x nhảy theo ε).
 
 - [x] 2026-10-21: **Đọc Beckermann et al. (1988), `references/JFM1988.pdf`.** Case 4.3 = thí nghiệm 12 (glass) và 14 (Al), cấu hình 2.
       - Cột cuối Bảng 1 là hệ số quán tính Ergun C = 0.554 (Gao gọi là Fe), **không phải độ rỗng**. Suy ε từ Eq. (9)–(10):
