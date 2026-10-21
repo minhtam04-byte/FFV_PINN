@@ -30,3 +30,11 @@ def test_train_then_load_run(tmp_path):
   for a, b in zip(jax.tree.leaves(model.state.params), jax.tree.leaves(loaded.state.params)):
     np.testing.assert_array_equal(a, b)
   assert loaded_history == history
+
+
+def test_load_missing_run_raises_without_creating_it(tmp_path):
+  import pytest
+  modify = lambda cfg: _tiny(cfg, tmp_path)
+  with pytest.raises(FileNotFoundError):
+    experiment.load_run("conduction_1d", "does_not_exist", base, modify_config_fn=modify)
+  assert os.listdir(tmp_path) == []

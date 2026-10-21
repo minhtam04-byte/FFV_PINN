@@ -17,7 +17,8 @@ os.environ.setdefault("WANDB_MODE", "disabled")
 import jax
 import wandb
 
-from jaxpi.checkpointing import create_checkpoint_manager, get_ckpt_path, restore_checkpoint
+from jaxpi.checkpointing import (create_checkpoint_manager, get_ckpt_path,
+                                 has_checkpoint_steps, restore_checkpoint)
 from jaxpi.models import create_model
 from jaxpi.training import train
 
@@ -158,11 +159,12 @@ def load_run(case, exp_name, org_config, step=None, modify_config_fn=None):
   if config.saving.get("ckpt_path", None) is None:
     config.saving.ckpt_path = case_outputs_dir(case)
 
-  model = build_model(case, config)
   ckpt_dir = get_ckpt_path(config)
-  ckpt_mngr = create_checkpoint_manager(config.saving, ckpt_dir)
-  if (step if step is not None else ckpt_mngr.latest_step()) is None:
+  # check before creating the manager: Orbax would create an empty run directory
+  if not has_checkpoint_steps(ckpt_dir):
     raise FileNotFoundError(f"Không tìm thấy checkpoint nào trong thư mục: {ckpt_dir}")
+  model = build_model(case, config)
+  ckpt_mngr = create_checkpoint_manager(config.saving, ckpt_dir)
   model.state = restore_checkpoint(ckpt_mngr, model.state, step=step)
   print(f"-> Đã nạp checkpoint step {int(model.state.step)} từ {ckpt_dir}")
 
