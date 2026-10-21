@@ -9,7 +9,9 @@ the scheme of that time, taken from git. Writes to outputs/fluid_porous_layer/fi
   interface_profiles.{png,pdf}     u, v, p, T, dT/dx across the left interface
   residual_regions.csv             RMS residual per region (fluid / interface band / porous / walls)
 
-  python scripts/residual_maps.py
+  python scripts/residual_maps.py                      # default run list (RUNS)
+  python scripts/residual_maps.py --tag=cmp "label=run_suffix" ...  # custom runs (suffix after
+                                                                   # fluid_porous_layer_aluminum_), files *_cmp.*
 """
 import csv
 import json
@@ -72,7 +74,13 @@ def load(suffix):
   run_dir = os.path.join(experiment.case_outputs_dir("fluid_porous_layer"), run_name)
   module, info = scheme_module(run_dir)
   cfg = ml_collections.ConfigDict(info["config"])
-  model, _, _ = experiment.load_run("fluid_porous_layer", suffix, aluminum)
+  features = bool(cfg.get("model", {}).get("interface_features", False))
+
+  def same_network(c):  # rebuild the network the run was trained with
+    c.model.interface_features = features
+    return c
+
+  model, _, _ = experiment.load_run("fluid_porous_layer", suffix, aluminum, modify_config_fn=same_network)
   return model, cfg, module, info
 
 
@@ -104,6 +112,13 @@ def regions(X, Y, h, phys):
 
 
 def main():
+  global RUNS
+  args = sys.argv[1:]
+  tag = next((a.split("=", 1)[1] for a in args if a.startswith("--tag=")), "")
+  tag = f"_{tag}" if tag else ""
+  pairs = [a for a in args if not a.startswith("--tag=")]
+  if pairs:  # optional: label=suffix pairs, e.g. "baseline=dragfix_seed0_n80"
+    RUNS = [tuple(a.split("=", 1)) for a in pairs]
   experiment.apply_runtime(aluminum.get_config())
   os.makedirs(FIG_DIR, exist_ok=True)
   plt.rcParams.update({"font.family": "serif", "mathtext.fontset": "stix", "font.size": 9,
@@ -139,10 +154,10 @@ def main():
   fig.suptitle("FV residual each run was trained on, evaluated at 400×400 control-volume centres "
                "(dashed: fluid/porous interfaces; colour range = top 4 decades)", color=INK, fontsize=10)
   for ext in ("png", "pdf"):
-    fig.savefig(os.path.join(FIG_DIR, f"residual_maps.{ext}"), dpi=200)
+    fig.savefig(os.path.join(FIG_DIR, f"residual_maps{tag}.{ext}"), dpi=200)
   plt.close(fig)
 
-  with open(os.path.join(FIG_DIR, "residual_regions.csv"), "w", newline="") as fh:
+  with open(os.path.join(FIG_DIR, f"residual_regions{tag}.csv"), "w", newline="") as fh:
     w = csv.DictWriter(fh, fieldnames=["run", "equation", "region", "rms", "max_abs"])
     w.writeheader(); w.writerows(rows)
 
@@ -161,7 +176,7 @@ def main():
   handles, labels = axes[0].get_legend_handles_labels()
   fig.legend(handles, labels, loc="outside lower center", ncol=4, frameon=False, fontsize=8.5)
   for ext in ("png", "pdf"):
-    fig.savefig(os.path.join(FIG_DIR, f"residual_x_profiles.{ext}"), dpi=200)
+    fig.savefig(os.path.join(FIG_DIR, f"residual_x_profiles{tag}.{ext}"), dpi=200)
   plt.close(fig)
 
   # ---------------- interface profiles (sub-h resolution) ----------------
@@ -197,7 +212,7 @@ def main():
   fig.suptitle("Profiles across the left fluid/porous interface (1201 points over ±0.06, i.e. sub-h resolution)",
                color=INK, fontsize=10)
   for ext in ("png", "pdf"):
-    fig.savefig(os.path.join(FIG_DIR, f"interface_profiles.{ext}"), dpi=200)
+    fig.savefig(os.path.join(FIG_DIR, f"interface_profiles{tag}.{ext}"), dpi=200)
   plt.close(fig)
 
   # ---------------- summary ----------------
