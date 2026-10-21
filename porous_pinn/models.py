@@ -12,10 +12,25 @@ from porous_pinn.numerical_pde import (
 )
 
 
+def uses_interface_features(config):
+    """config.model.interface_features (mặc định False; config cũ không có khóa này)."""
+    return bool(config.get("model", {}).get("interface_features", False))
+
+
 class PorousNaturalConvection2D(ForwardBVP):
     variables = ("u", "v", "p", "T")
 
+    @staticmethod
+    def network_input_dim(config):
+        """Số đầu vào của mạng: (x, y), thêm (|x - x_s|, |x - x_e|) khi bật đặc trưng mặt phân cách."""
+        return 4 if uses_interface_features(config) else config.input_dim
+
     def __init__(self, config, lr, tx, arch, state):
+        # Đặc trưng mặt phân cách kiểu cusp-capturing (Tseng et al. 2023): |x - x_i| liên tục
+        # nhưng có đạo hàm nhảy tại x_i, nên mạng biểu diễn được chỗ gãy gradient của T, v.
+        self.interface_features = uses_interface_features(config)
+        self.x_s = float(config.physics.get("porous_x_start", 0.0))
+        self.x_e = float(config.physics.get("porous_x_end", 1.0))
         super().__init__(config, lr, tx, arch, state)
 
         # Khởi tạo sẵn điểm biên tĩnh trong bộ nhớ GPU
@@ -36,7 +51,10 @@ class PorousNaturalConvection2D(ForwardBVP):
         self.Ty_pred_fn = vmap(self.dT_dy_scalar, (None, 0, 0))
 
     def neural_net(self, params, x, y):
-        z = jnp.stack([x, y])
+        if self.interface_features:
+            z = jnp.stack([x, y, jnp.abs(x - self.x_s), jnp.abs(x - self.x_e)])
+        else:
+            z = jnp.stack([x, y])
         outputs = self.state.apply_fn(params, z)
         return outputs[0], outputs[1], outputs[2], outputs[3]
 

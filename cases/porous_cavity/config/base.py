@@ -161,6 +161,9 @@ def get_config():
     # JAX trên GPU Ampere là TF32, làm ψ_max lệch ~1% (xem ROADMAP.md).
     config.jax_matmul_precision = "highest"
 
+    # Đặc trưng đầu vào biết vị trí mặt phân cách: (x, y) -> (x, y, |x - x_start|, |x - x_end|)
+    config.model = ml_collections.ConfigDict({"interface_features": False})
+
     # Tham chiếu de Vahl Davis (1983) cho Ra = 1e4, Pr = 0.71 (Da, eps ở trên ≈ chất lỏng thuần).
     # Đổi Ra thì phải đổi hoặc bỏ (None) các giá trị này.
     config.reference = ml_collections.ConfigDict({"psi_max": 5.071, "Nu": 2.243})

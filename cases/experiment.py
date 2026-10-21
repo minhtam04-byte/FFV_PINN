@@ -19,7 +19,8 @@ import wandb
 
 from jaxpi.checkpointing import (create_checkpoint_manager, get_ckpt_path,
                                  has_checkpoint_steps, restore_checkpoint)
-from jaxpi.models import create_model
+from jaxpi.models import (create_arch, create_lr_schedule, create_model, create_optimizer,
+                          create_train_state)
 from jaxpi.training import train
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -67,7 +68,20 @@ def apply_runtime(config):
 
 def build_model(case, config, params=None):
   apply_runtime(config)
-  return create_model(config, _load(CASES[case][0]), params=params)
+  model_cls = _load(CASES[case][0])
+  width = (model_cls.network_input_dim(config) if hasattr(model_cls, "network_input_dim")
+           else config.input_dim)
+  if width == config.input_dim:  # default path, unchanged
+    return create_model(config, model_cls, params=params)
+  # The network takes extra input features: initialise it with the wider input while
+  # config.input_dim stays the number of coordinates (used by the vmapped predictors).
+  lr = create_lr_schedule(config.optim)
+  tx = create_optimizer(config.optim, lr)
+  arch = create_arch(config.arch)
+  init_config = copy.deepcopy(config)
+  init_config.input_dim = width
+  state = create_train_state(init_config, tx, arch, params=params)
+  return model_cls(config, lr, tx, arch, state)
 
 
 def stop_on_nonfinite(step, log_dict):

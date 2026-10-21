@@ -164,6 +164,9 @@ def get_config():
     # JAX trên GPU Ampere là TF32, làm ψ_max lệch ~1% (xem ROADMAP.md).
     config.jax_matmul_precision = "highest"
 
+    # Đặc trưng đầu vào biết vị trí mặt phân cách: (x, y) -> (x, y, |x - x_start|, |x - x_end|)
+    config.model = ml_collections.ConfigDict({"interface_features": False})
+
     # Giá trị tham chiếu để evaluator log error/*_vs_ref (None = không so sánh)
     config.reference = ml_collections.ConfigDict({"psi_max": None, "Nu": None})
 
