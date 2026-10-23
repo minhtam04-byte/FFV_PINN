@@ -23,6 +23,7 @@ Open research tasks, known issues and the agreed paper framing are tracked in **
   - `scripts/plot_fields.py --tag=x "label=run_suffix" ...` plots streamlines and isotherms.
   - `scripts/plot_beckermann_fig3.py` compares runs with the digitised Fig. 3 of Beckermann et al. (1988), stored in `reference_data/`.
   - `run_suffix` is the part after `fluid_porous_layer_aluminum_`, or a full run-directory name.
+- Paper experiments keep their launchers (`.sh`) and analysis scripts in `scripts/<experiment>/`, with a README describing the protocol. Each one resolves the repo root itself. `scripts/table3/` covers Table 3 (homogeneous porous cavity vs Liu et al. 2021) and the speed benchmark. Do not leave experiment scripts in `~` or in a scratchpad.
 - After an **intended** numerical change, regenerate the golden file with `python tests/make_golden.py` and say so in the commit message. Otherwise `tests/test_regression.py` failing means numerics changed unintentionally.
 
 ## Architecture
