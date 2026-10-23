@@ -566,7 +566,8 @@ def compute_ffv_continuous_pde_residuals(
 # stencil 5 điểm [P, e, w, n, s] chỉ vươn tới h/2, nên tâm ô kiểm soát lấy mẫu được
 # trong [h/2, L - h/2] và các ô kiểm soát phủ kín cả miền, kể cả sát vách.
 # =============================================================================
-def compute_ffv_compact_pde_residuals(neural_net_fn, params, x, y, h, physics_cfg):
+def compute_ffv_compact_pde_residuals(neural_net_fn, params, x, y, h, physics_cfg,
+                                      return_stencil=False):
     """"ffv_compact" residuals: 5-point stencil [P, e, w, n, s] plus two drag quadrature points.
 
     Every term uses values at distance h/2 from P only. Control volumes
@@ -608,9 +609,14 @@ def compute_ffv_compact_pde_residuals(neural_net_fn, params, x, y, h, physics_cf
         x, y: scalar centre of the control volume; h/2 <= x, y <= L - h/2.
         h: control-volume width.
         physics_cfg: config.physics; momentum_form is "gao" or "hirata".
+        return_stencil: also return the network values on the 5-point stencil, so that
+            the caller can form the control-volume average of PorousNaturalConvection2D.sol_net
+            without evaluating the network a second time.
 
     Returns:
         Dict of residuals {"u": x-momentum, "v": y-momentum, "p": continuity, "T": energy}.
+        With return_stencil, the tuple (residuals, (u_s, v_s, p_s, T_s)), where each
+        stencil array has shape (5,) and holds the values at [P, e, w, n, s].
 
     Raises:
         ValueError: if physics.momentum_form is neither "gao" nor "hirata".
@@ -741,7 +747,10 @@ def compute_ffv_compact_pde_residuals(neural_net_fn, params, x, y, h, physics_cf
     rv = conv_v + dp_dy + diff_v_oper + f_v_drag - f_buoyancy
     rT = conv_T + diff_T_oper
 
-    return {"u": ru, "v": rv, "p": rc, "T": rT}
+    res = {"u": ru, "v": rv, "p": rc, "T": rT}
+    if return_stencil:
+        return res, (u_all[:5], v_all[:5], p_all[:5], T_all[:5])
+    return res
 
 
 # =============================================================================

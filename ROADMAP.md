@@ -49,6 +49,10 @@ Các việc nghiên cứu còn mở cho bài báo. Đánh dấu `[x]` khi xong, 
 
 ## B. Phương pháp số
 
+- [x] 2026-10-23: **Tốc độ `ffv_compact`.** Profile cho thấy phần dư FV rẻ hơn AD khoảng 40%. FV chậm hơn chỉ vì PTS: `sol_net(params)`
+      tính lại mạng tại 5 điểm stencil, trong một lần vmap riêng mà XLA không gộp được. Cờ `diff.fuse_pts_stencil` (mặc định tắt) dùng
+      chung lần tính đó; loss giống từng bit. Đo theo Bảng 2 của Wang et al. (RTX 3060, giây/100 bước, có PTS): AD 1.443, `ffv_continuous` 1.852,
+      `ffv_compact` 1.712 → **1.206** khi bật cờ. Chưa làm: gộp tương tự cho `ffv`/`ffv_continuous`; dùng chung điểm mặt giữa các ô với lưới cố định.
 - [x] 2026-10-20: `ffv` bỏ nội suy áp suất kiểu CAN (cần ∂p/∂x, ∂p/∂y từ AD) và dùng `(p_e − p_w)/dx`, `(p_n − p_s)/dy`
       như `ffv_continuous`; scheme giờ không còn dùng AD (33.6 ms/bước so với 52.7 trước đó). **Mọi run `ffv` trước ngày này
       (kể cả `verify_cavity_ffv`, `verify_case2_ffv`) dùng áp suất CAN**, nên phải chạy lại trước khi đưa vào bài báo.

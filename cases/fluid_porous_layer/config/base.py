@@ -159,6 +159,9 @@ def get_config():
     diff.n_x = 80
     diff.n_y = 80
     diff.use_continuous_mesh = False
+    # Chỉ ffv_compact: phần dư và trung bình ô của PTS dùng chung 1 lần tính mạng tại
+    # stencil 5 điểm (cùng kết quả về toán học, nhanh hơn). False = như cũ.
+    diff.fuse_pts_stencil = False
 
     # Precision của phép nhân ma trận trên GPU. "highest" = FP32 đầy đủ; mặc định của
     # JAX trên GPU Ampere là TF32, làm ψ_max lệch ~1% (xem ROADMAP.md).

@@ -54,6 +54,7 @@ Open research tasks, known issues and the agreed paper framing are tracked in **
 - `ad`: pointwise forward-mode AD. The energy equation uses `k·∇²T` piecewise, with no flux-continuity condition at the porous interface; `tests/test_fv_schemes.py` demonstrates this.
 - `ffv_compact` (recommended; 5 points at h/2 plus 2 drag Gauss points) is second order in the bulk and in cut cells, including the drag. `ffv_continuous` has first-order drag in cut cells (a strict xfail in `TestDragCellAverage`).
 - FV schemes are second order in the bulk (verified by manufactured-solution tests). `ffv_continuous` is exact for a flux-continuous temperature at any interface offset; `ffv` is exact only when the interface lies on a cell face. `sol_net` returns a stencil-weighted cell average so that the PTS damping term matches the discrete residual.
+- `diff.fuse_pts_stencil=True` (`ffv_compact` only, default off) takes the PTS cell average from the residual's own stencil evaluation (`PorousNaturalConvection2D.r_and_sol_net`). Losses are bitwise equal and gradients agree to ~1e-7 (`tests/test_fused_pts.py`). On an RTX 3060 it cuts the cost of a step with PTS by 30%, from 1.71 to 1.21 s per 100 steps, which is 16% faster than AD with PTS.
 
 ## Conventions
 

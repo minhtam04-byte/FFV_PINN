@@ -14,6 +14,7 @@ from jaxpi.derivatives import hessian_diag_fwd, value_and_jacfwd
 from jaxpi.models import ForwardBVP
 from porous_pinn.boundary import sample_boundaries_natural_convection
 from porous_pinn.numerical_pde import (
+    compute_ffv_compact_pde_residuals,
     compute_pde_residuals_nd,
     compute_porous_and_buoyancy,
 )
@@ -324,3 +325,71 @@ class PorousNaturalConvection2D(ForwardBVP):
             "p": jnp.dot(w_vol, p_s),
             "T": jnp.dot(w_vol, T_s),
         }
+
+    def r_and_sol_net(self, params, x, y):
+        """"ffv_compact" residuals and the sol_net average from one stencil evaluation.
+
+        The residual already evaluates the network at [P, e, w, n, s]; the control-volume
+        average of sol_net uses the same five points. Reusing those values saves five network
+        evaluations, with their backward pass, per collocation point. The result equals
+        (r_net, sol_net) up to floating-point rounding.
+
+        Args:
+            params: network parameters.
+            x, y: scalar coordinates.
+
+        Returns:
+            Tuple (residuals, averages), both dicts keyed by "u", "v", "p", "T".
+        """
+        h_step = self.config.diff.get("h_stencil", 0.005)
+        res, (u_s, v_s, p_s, T_s) = compute_ffv_compact_pde_residuals(
+            self.neural_net, params, x, y, h=h_step, physics_cfg=self.config.physics,
+            return_stencil=True,
+        )
+        w_vol = jnp.array([0.5, 0.125, 0.125, 0.125, 0.125])
+        sols = {
+            "u": jnp.dot(w_vol, u_s),
+            "v": jnp.dot(w_vol, v_s),
+            "p": jnp.dot(w_vol, p_s),
+            "T": jnp.dot(w_vol, T_s),
+        }
+        return res, sols
+
+    def compute_residual_losses(self, params, state, batch, pseudo_time=False):
+        """Residual losses; with diff.fuse_pts_stencil the pseudo-time term reuses the stencil.
+
+        Without the option (default) or without pseudo-time stepping this is
+        ForwardBVP.compute_residual_losses unchanged. With it, the residual and the current
+        cell average come from r_and_sol_net, so the network is evaluated once per stencil
+        point instead of twice; only the average at prev_params is computed separately.
+
+        Args:
+            params: network parameters.
+            state: train state (pts_weights, prev_params).
+            batch: (N, 2) array of collocation points.
+            pseudo_time: add the pseudo-time term pts_weight * (sol(params) - sol(prev_params)).
+
+        Returns:
+            Dict {"<var>_res": mean squared residual}.
+
+        Raises:
+            ValueError: if diff.fuse_pts_stencil is set with a scheme other than "ffv_compact".
+        """
+        if not (pseudo_time and self.config.diff.get("fuse_pts_stencil", False)):
+            return super().compute_residual_losses(params, state, batch, pseudo_time=pseudo_time)
+        scheme = self.config.diff.get("scheme", "ad").lower().strip()
+        if scheme != "ffv_compact":
+            raise ValueError(
+                f"diff.fuse_pts_stencil chỉ được cài cho diff.scheme='ffv_compact' (đang là '{scheme}')."
+            )
+
+        coords = (batch[:, 0], batch[:, 1])
+        res, sols = vmap(self.r_and_sol_net, (None, 0, 0))(params, *coords)
+        keys, res_pred = self._stack_residuals(res, state)
+        sols_pred = self._sols_matrix(sols, keys)
+        sols_prev = self._sols_matrix(self.sol_pred_fn(state.prev_params, *coords), keys)
+        pts_weights = self._pts_weight_vector(keys, state)  # (n_components,)
+        res_pred = res_pred + pts_weights[:, None] * (sols_pred - sols_prev)
+
+        per_key_losses = jnp.mean(res_pred ** 2, axis=1)  # (n_components,)
+        return dict(zip(self._residual_loss_names(keys), per_key_losses))
